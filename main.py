@@ -25,6 +25,7 @@ from collectors.fx import fetch_fx
 from collectors.krx_flows import fetch_market_flows
 from collectors.macro import fetch_macro_snapshot
 from collectors.news_sentiment import fetch_news_for_keywords
+from collectors.non_tradeable_pricer import price_non_tradeable
 from collectors.portfolio_loader import load_portfolio_from_excel
 from collectors.prices import fetch_benchmarks, fetch_price_series
 from config import (
@@ -143,6 +144,10 @@ def run() -> int:
     if not holdings_value:
         log.error("유효한 추적 종목 없음 — 종료")
         return 1
+
+    # 비추적 자산 일일 가격 책정 (확정수익·채권 ETF 대용·KOFIA 펀드)
+    log.info("비추적 자산 가격 책정...")
+    nt_stats = price_non_tradeable(non_tradeable)
 
     total_tradeable_krw = sum(h["value_krw"] for h in holdings_value)
     total_non_tradeable_krw = sum((h.value_krw or 0) for h in non_tradeable)

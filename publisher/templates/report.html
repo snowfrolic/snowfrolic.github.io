@@ -280,17 +280,40 @@
     <div class="card">
       <h2>비추적 자산 (펀드·연금·채권·현금) — {{ non_tradeable_total_str }}</h2>
       <table>
-        <tr><th>카테고리</th><th>항목</th><th class="num">평가금액</th></tr>
+        <tr>
+          <th>카테고리</th>
+          <th>항목</th>
+          <th class="num">평가금액</th>
+          <th class="num">전일대비</th>
+          <th>추적</th>
+        </tr>
         {% for h in non_tradeable %}
+        {% set method = h._update_method|default('manual') %}
+        {% set chg = h._daily_chg_pct|default(0) %}
         <tr>
           <td><span class="muted">{{ h.category }}</span></td>
-          <td>{{ h.name }}{% if h.provider %} <span class="muted">· {{ h.provider }}</span>{% endif %}</td>
+          <td>
+            {{ h.name }}{% if h.provider %} <span class="muted">· {{ h.provider }}</span>{% endif %}
+            {% if h._proxy_ticker %}<span class="muted">· 대용 {{ h._proxy_ticker }}</span>{% endif %}
+          </td>
           <td class="num">{{ '{:,.0f}원'.format(h.value_krw or 0) }}</td>
+          <td class="num {% if method == 'manual' %}muted{% elif chg >= 0 %}pos{% else %}neg{% endif %}">
+            {% if method == 'manual' %}—{% else %}{{ '{:+.2f}%'.format(chg) }}{% endif %}
+          </td>
+          <td>
+            {% if method == 'fixed_yield' %}<span class="chip chip-sm" style="background:#16a34a;">확정수익</span>
+            {% elif method == 'bond_proxy' %}<span class="chip chip-sm" style="background:#0891b2;">ETF 대용</span>
+            {% elif method == 'kofia_fund' %}<span class="chip chip-sm" style="background:#7c3aed;">KOFIA</span>
+            {% else %}<span class="chip chip-sm" style="background:#64748b;">수동</span>{% endif %}
+          </td>
         </tr>
         {% endfor %}
       </table>
       <div class="muted" style="margin-top: 10px;">
-        해당 자산은 일일 가격 추적이 어려워 매크로 신호만 반영됩니다.
+        <b>추적 방식</b> — <span style="color:#16a34a;">확정수익</span>: 연환산 복리 적용 ·
+        <span style="color:#0891b2;">ETF 대용</span>: 듀레이션 유사 ETF 가격 변화 적용 ·
+        <span style="color:#7c3aed;">KOFIA</span>: 펀드 기준가 ·
+        <span style="color:#64748b;">수동</span>: 명목가치 유지 (Excel 직접 갱신 필요)
       </div>
     </div>
     {% endif %}

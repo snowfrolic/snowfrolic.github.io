@@ -59,6 +59,9 @@ desktop.ini
 *.xls
 portfolio.csv
 ticker_map.csv
+yield_map.csv
+bond_etf_map.csv
+fund_map.csv
 
 # Build artifacts (only root-copied files are committed)
 dist/
