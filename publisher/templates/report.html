@@ -52,15 +52,24 @@
     padding: 12px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
   .warn.critical { background: rgba(239,68,68,0.12); border-color: var(--critical); }
 
-  /* SUMMARY (AI 요약 인용구 박스) */
+  /* SUMMARY (AI 요약 — 3단계 인사이트 박스) */
   .summary { background: rgba(96,165,250,0.07); border-left: 3px solid var(--accent);
-    padding: 10px 14px; border-radius: 6px; margin: 0 0 14px; font-size: 13.5px;
-    font-style: italic; color: #cbd5e1; line-height: 1.55; }
-  .summary .tag { font-style: normal; font-weight: 600; color: var(--accent);
+    padding: 12px 16px; border-radius: 6px; margin: 0 0 14px; font-size: 13.5px;
+    color: #cbd5e1; line-height: 1.65; }
+  .summary .tag { font-weight: 600; color: var(--accent);
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
-    display: block; margin-bottom: 4px; }
-  .summary.overall { background: rgba(96,165,250,0.10); font-size: 14px;
-    padding: 14px 18px; margin-bottom: 16px; }
+    display: block; margin-bottom: 8px; }
+  .summary .step + .step { margin-top: 10px; }
+  .summary .step-label { display: inline-block; font-weight: 700; font-size: 11px;
+    padding: 2px 8px; border-radius: 4px; margin-right: 8px;
+    letter-spacing: 0.3px; }
+  .summary .step-observe   .step-label { background: rgba(148,163,184,0.25); color: #cbd5e1; }
+  .summary .step-interpret .step-label { background: rgba(96,165,250,0.22);  color: #93c5fd; }
+  .summary .step-implication .step-label { background: rgba(74,222,128,0.22); color: #86efac; }
+  .summary .step-implication { font-weight: 500; color: #e2e8f0; }
+  .summary.overall { background: rgba(96,165,250,0.10); padding: 16px 20px;
+    margin-bottom: 18px; font-size: 14.5px; }
+  .summary.overall .tag { font-size: 12px; }
 
   /* TABLE */
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -138,12 +147,18 @@
       <div class="total">총 평가금액 · {{ total_value_str }} · 추적 종목 {{ risk.holdings|length }}개</div>
     </div>
 
-    {% if summaries and summaries.overall %}
-    <div class="summary overall">
-      <span class="tag">오늘의 시장 총평 (AI)</span>
-      {{ summaries.overall }}
-    </div>
-    {% endif %}
+    {% macro render_summary(detail, classname='', tag_label='요약') -%}
+      {% if detail and not detail.is_empty -%}
+      <div class="summary {{ classname }}">
+        <span class="tag">{{ tag_label }}</span>
+        {% if detail.observe %}<div class="step step-observe"><span class="step-label">관찰</span>{{ detail.observe }}</div>{% endif %}
+        {% if detail.interpret %}<div class="step step-interpret"><span class="step-label">해석</span>{{ detail.interpret }}</div>{% endif %}
+        {% if detail.implication %}<div class="step step-implication"><span class="step-label">시사점</span>{{ detail.implication }}</div>{% endif %}
+      </div>
+      {%- endif %}
+    {%- endmacro %}
+
+    {% if summaries %}{{ render_summary(summaries.overall, 'overall', '오늘의 시장 총평 (AI)') }}{% endif %}
 
     {% if risk.short_term_warning %}
     <div class="warn"><b>⚠️ 단기 경고</b> · {{ risk.short_term_warning }}</div>
@@ -163,9 +178,7 @@
     <!-- BENCHMARKS -->
     <div class="card">
       <h2>오늘의 시장 (전일 종가)</h2>
-      {% if summaries and summaries.benchmarks %}
-      <div class="summary"><span class="tag">요약</span>{{ summaries.benchmarks }}</div>
-      {% endif %}
+      {% if summaries %}{{ render_summary(summaries.benchmarks, '', '요약') }}{% endif %}
       <table>
         <tr><th>지수</th><th class="num">종가</th><th class="num">전일대비</th></tr>
         {% for name, s in benchmarks.items() %}
@@ -181,9 +194,7 @@
     <!-- MACRO -->
     <div class="card">
       <h2>금리 · 환율 · 변동성</h2>
-      {% if summaries and summaries.macro %}
-      <div class="summary"><span class="tag">요약</span>{{ summaries.macro }}</div>
-      {% endif %}
+      {% if summaries %}{{ render_summary(summaries.macro, '', '요약') }}{% endif %}
       <table>
         <tr><th>항목</th><th class="num">값</th><th class="num">전일대비</th></tr>
         {% for name, s in fx_macro.items() %}
@@ -219,9 +230,7 @@
     <!-- HOLDINGS -->
     <div class="card">
       <h2>보유 종목 리스크 · 액션</h2>
-      {% if summaries and summaries.holdings %}
-      <div class="summary"><span class="tag">요약</span>{{ summaries.holdings }}</div>
-      {% endif %}
+      {% if summaries %}{{ render_summary(summaries.holdings, '', '요약') }}{% endif %}
       <table>
         <tr>
           <th>종목</th>
