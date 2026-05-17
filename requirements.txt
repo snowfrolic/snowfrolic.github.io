@@ -1,0 +1,11 @@
+yfinance>=0.2.40
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+jinja2>=3.1.0
+pandas-datareader>=0.10.0
+openpyxl>=3.1.0
+pykrx>=1.0.45
+setuptools<81  # pykrx의 pkg_resources 의존성용
+cryptography>=42.0.0

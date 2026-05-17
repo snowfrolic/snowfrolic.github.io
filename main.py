@@ -1,0 +1,219 @@
+"""포트폴리오 리스크 자문 — 사이트 빌드 진입점.
+
+흐름
+----
+1. 포트폴리오 로드 (Excel 자동 파싱 또는 CSV)
+2. 시장 데이터 수집 (벤치마크 / 매크로 / 환율 / 보유 종목)
+3. 보조 데이터 수집 (KRX 수급, 이벤트 캘린더, 뉴스 + 감성분석)
+4. 종목별 기술 분석 + 리스크 평가
+5. 포트 전체 점수 산출
+6. 정적 사이트 빌드 (dist/) + 아카이브 + 점수 추이
+7. StatiCrypt 암호화 (STATICRYPT_PASSWORD 설정 시)
+"""
+from __future__ import annotations
+
+import sys
+import traceback
+
+import pandas as pd
+
+from analyzers.risk import HoldingRisk, evaluate_holding, evaluate_portfolio
+from analyzers.technical import compute_tech
+from collectors.ai_summarizer import generate_summaries
+from collectors.calendar import fetch_upcoming_events
+from collectors.fx import fetch_fx
+from collectors.krx_flows import fetch_market_flows
+from collectors.macro import fetch_macro_snapshot
+from collectors.news_sentiment import fetch_news_for_keywords
+from collectors.portfolio_loader import load_portfolio_from_excel
+from collectors.prices import fetch_benchmarks, fetch_price_series
+from config import (
+    ANTHROPIC_API_KEY,
+    BENCHMARKS,
+    GEMINI_API_KEY,
+    PORTFOLIO_CSV,
+    STATICRYPT_PASSWORD,
+    USE_EXCEL_PORTFOLIO,
+    get_logger,
+)
+from publisher.builder import BuildInputs, build_site
+from publisher.encrypt import encrypt_dist, validate_password_strength
+
+log = get_logger(__name__)
+
+
+def _load_tradeable_others():
+    """Excel 또는 CSV에서 추적/비추적 분리. 반환은 (tradeable_list_of_dicts, non_tradeable_list)."""
+    if USE_EXCEL_PORTFOLIO:
+        tradeable_h, others_h = load_portfolio_from_excel()
+        tradeable = [
+            {
+                "ticker": h.ticker,
+                "name": h.name,
+                "shares": h.quantity or 0,
+                "avg_price": (h.value_krw / h.quantity) if (h.quantity and h.value_krw) else 0,
+                "market": "KR" if h.ticker.endswith((".KS", ".KQ")) else "US",
+                "currency": "KRW" if h.ticker.endswith((".KS", ".KQ")) else "USD",
+                "category": h.category,
+                "init_value_krw": h.value_krw or 0,
+                "return_pct_input": h.return_pct,
+            }
+            for h in tradeable_h
+        ]
+        return tradeable, others_h
+
+    # 폴백: portfolio.csv
+    df = pd.read_csv(PORTFOLIO_CSV)
+    tradeable = [
+        {
+            "ticker": str(r["ticker"]).strip(),
+            "name": str(r["name"]).strip(),
+            "shares": float(r["shares"]),
+            "avg_price": float(r["avg_price"]),
+            "market": str(r["market"]).strip(),
+            "currency": str(r["currency"]).strip(),
+            "category": "CSV",
+            "init_value_krw": 0,
+            "return_pct_input": None,
+        }
+        for _, r in df.iterrows()
+    ]
+    return tradeable, []
+
+
+def run() -> int:
+    log.info("=" * 60)
+    log.info("포트폴리오 리스크 자문 — 사이트 빌드 시작")
+    log.info("=" * 60)
+
+    # 비번 강도 검증 — 빌드 차단
+    if STATICRYPT_PASSWORD:
+        try:
+            validate_password_strength(STATICRYPT_PASSWORD)
+        except ValueError as exc:
+            log.error(f"비밀번호 정책 위반: {exc}")
+            return 3
+
+    tradeable_input, non_tradeable = _load_tradeable_others()
+    log.info(f"포트 로드: 추적 {len(tradeable_input)}건, 비추적 {len(non_tradeable)}건")
+
+    log.info("매크로 / 환율 데이터 수집...")
+    macro = fetch_macro_snapshot()
+    fx = fetch_fx()
+    macro.indicators.update(fx)
+
+    log.info("벤치마크 지수 수집...")
+    benchmarks = fetch_benchmarks(BENCHMARKS)
+
+    usd_krw = fx["USD/KRW"].last_close if "USD/KRW" in fx else 1380.0
+    log.info(f"USD/KRW = {usd_krw:.2f}")
+
+    log.info("보유 종목 가격 데이터 수집...")
+    holdings_value: list[dict] = []
+    for h in tradeable_input:
+        series = fetch_price_series(h["ticker"], h["name"])
+        if series is None or not series.is_valid:
+            log.warning(f"  {h['ticker']} 데이터 부족 — 스킵")
+            continue
+
+        last = series.last_close
+        # Excel에서 온 항목은 shares·avg_price가 비어있을 수 있음 — 평가금액 직접 사용
+        if h["shares"] > 0 and h["avg_price"] > 0:
+            value_local = last * h["shares"]
+            pnl_pct = (last - h["avg_price"]) / h["avg_price"] * 100
+        else:
+            value_local = h.get("init_value_krw", 0)
+            pnl_pct = h.get("return_pct_input") or 0.0
+
+        value_krw = value_local * (usd_krw if h["currency"] == "USD" else 1.0)
+
+        holdings_value.append({
+            "ticker": h["ticker"],
+            "name": h["name"],
+            "market": h["market"],
+            "currency": h["currency"],
+            "last_close": last,
+            "daily_chg": series.pct_change,
+            "value_local": value_local,
+            "value_krw": value_krw,
+            "pnl_pct": pnl_pct,
+            "series": series,
+        })
+
+    if not holdings_value:
+        log.error("유효한 추적 종목 없음 — 종료")
+        return 1
+
+    total_tradeable_krw = sum(h["value_krw"] for h in holdings_value)
+    total_non_tradeable_krw = sum((h.value_krw or 0) for h in non_tradeable)
+    log.info(f"추적 {total_tradeable_krw:,.0f}원 / 비추적 {total_non_tradeable_krw:,.0f}원")
+
+    log.info("기술 지표 + 리스크 평가...")
+    holdings_risk: list[HoldingRisk] = []
+    for h in holdings_value:
+        weight = h["value_krw"] / total_tradeable_krw * 100
+        tech = compute_tech(h["series"].daily, h["series"].weekly)
+        holdings_risk.append(evaluate_holding(
+            ticker=h["ticker"], name=h["name"], market=h["market"],
+            weight_pct=weight, pnl_pct=h["pnl_pct"],
+            tech=tech, macro=macro,
+        ))
+
+    risk = evaluate_portfolio(holdings_risk, macro, total_tradeable_krw)
+    log.info(f"종합 점수 {risk.overall_score:.1f} → {risk.overall_action}")
+
+    log.info("보조 데이터 수집 (KRX 수급)...")
+    krx = fetch_market_flows(days=7)
+    log.info(f"  KRX 가용: {krx.available}")
+
+    log.info("경제 이벤트 캘린더...")
+    events = fetch_upcoming_events(days_ahead=14)
+    log.info(f"  이벤트 {len(events)}건")
+
+    log.info("뉴스 수집...")
+    news_keywords = ["코스피", "FOMC"] + [h.name for h in risk.holdings[:3]]
+    news = fetch_news_for_keywords(news_keywords, per_kw=2)
+    log.info(f"  헤드라인 {len(news)}건 (Claude 감성분석: {bool(ANTHROPIC_API_KEY)})")
+
+    log.info(f"Gemini 섹션 요약 생성 (키 설정: {bool(GEMINI_API_KEY)})...")
+    summaries = generate_summaries(risk, benchmarks, macro, holdings_value)
+
+    log.info("사이트 빌드...")
+    dist = build_site(
+        BuildInputs(
+            risk=risk,
+            benchmarks=benchmarks,
+            macro=macro,
+            holdings_with_chg=holdings_value,
+            non_tradeable=non_tradeable,
+            total_tradeable_krw=total_tradeable_krw,
+            total_non_tradeable_krw=total_non_tradeable_krw,
+            krx=krx,
+            events=events,
+            news=news,
+            has_claude=bool(ANTHROPIC_API_KEY),
+            summaries=summaries,
+        ),
+        password=STATICRYPT_PASSWORD,
+    )
+    log.info(f"빌드 완료 → {dist}")
+
+    if STATICRYPT_PASSWORD:
+        log.info("StatiCrypt 암호화...")
+        n = encrypt_dist(dist, STATICRYPT_PASSWORD)
+        log.info(f"  {n}개 HTML 암호화 완료")
+    else:
+        log.warning("STATICRYPT_PASSWORD 미설정 — 사이트가 평문으로 빌드됨!")
+        log.warning("프로덕션 배포 전 .env에 비번을 설정하세요.")
+
+    log.info("완료")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(run())
+    except Exception as exc:
+        log.error(f"치명적 오류: {exc}")
+        log.error(traceback.format_exc())
+        sys.exit(2)

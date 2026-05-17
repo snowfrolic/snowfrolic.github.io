@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="referrer" content="no-referrer">
+<title>{{ subject }}</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel2: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #60a5fa;
+    --pos: #4ade80;
+    --neg: #f87171;
+    --warn: #fbbf24;
+    --critical: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; padding: 0;
+    -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 16px; display: grid;
+    grid-template-columns: 1fr 240px; gap: 16px; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } .side { order: 2; } }
+  main { min-width: 0; }
+
+  /* HERO */
+  .hero { background: linear-gradient(135deg, {{ overall_color }} 0%, var(--panel) 80%);
+    border-radius: 14px; padding: 24px; margin-bottom: 16px; }
+  .hero h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+  .hero .meta { font-size: 13px; color: rgba(255,255,255,0.85); }
+  .hero .score-row { display: flex; align-items: baseline; gap: 16px; margin: 12px 0 6px; }
+  .hero .score { font-size: 56px; font-weight: 800; line-height: 1; }
+  .hero .sep { font-size: 18px; color: rgba(255,255,255,0.6); }
+  .hero .action { font-size: 20px; font-weight: 600; }
+  .hero .total { font-size: 14px; color: rgba(255,255,255,0.85); margin-top: 8px; }
+
+  /* CARDS */
+  .card { background: var(--panel); border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+  .card h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--accent);
+    border-left: 3px solid var(--accent); padding-left: 10px; }
+  .card h3 { margin: 16px 0 8px; font-size: 13px; color: var(--muted); }
+
+  /* WARN */
+  .warn { background: rgba(251,191,36,0.12); border-left: 4px solid var(--warn);
+    padding: 12px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
+  .warn.critical { background: rgba(239,68,68,0.12); border-color: var(--critical); }
+
+  /* SUMMARY (AI 요약 인용구 박스) */
+  .summary { background: rgba(96,165,250,0.07); border-left: 3px solid var(--accent);
+    padding: 10px 14px; border-radius: 6px; margin: 0 0 14px; font-size: 13.5px;
+    font-style: italic; color: #cbd5e1; line-height: 1.55; }
+  .summary .tag { font-style: normal; font-weight: 600; color: var(--accent);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    display: block; margin-bottom: 4px; }
+  .summary.overall { background: rgba(96,165,250,0.10); font-size: 14px;
+    padding: 14px 18px; margin-bottom: 16px; }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--panel2); }
+  th { background: rgba(15,23,42,0.6); font-weight: 600; color: var(--muted); font-size: 12px;
+    text-transform: uppercase; letter-spacing: 0.5px; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pos { color: var(--pos); }
+  .neg { color: var(--neg); }
+  .muted { color: var(--muted); font-size: 12px; }
+
+  /* CHIPS */
+  .chip { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 11px;
+    font-weight: 700; color: white; }
+  .chip-sm { padding: 2px 6px; font-size: 10px; }
+
+  /* HOLDINGS DETAIL */
+  details summary { cursor: pointer; padding: 6px 0; font-size: 12px; color: var(--muted); }
+  details ul { margin: 4px 0 8px 16px; padding: 0; }
+  details li { font-size: 12px; color: var(--muted); margin: 2px 0; }
+  details li.warn-li { color: var(--warn); }
+
+  /* SIDEBAR */
+  .side { display: flex; flex-direction: column; gap: 12px; }
+  .side .nav { background: var(--panel); border-radius: 12px; padding: 14px; }
+  .side h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; }
+  .side ul { list-style: none; padding: 0; margin: 0; }
+  .side ul li { margin: 4px 0; font-size: 13px; }
+  .side ul li a { color: var(--text); text-decoration: none; }
+  .side ul li a:hover { color: var(--accent); }
+  .side ul li.current { font-weight: 700; color: var(--accent); }
+
+  /* CHART */
+  .chart-wrap { background: var(--panel); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .chart-wrap canvas { width: 100% !important; height: 200px !important; }
+
+  /* GRID STATS */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+  .stat { background: var(--panel2); padding: 10px 12px; border-radius: 8px; }
+  .stat .label { font-size: 11px; color: var(--muted); }
+  .stat .val { font-size: 16px; font-weight: 700; margin-top: 2px; }
+
+  /* EVENT TIMELINE */
+  .event { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--panel2); }
+  .event:last-child { border-bottom: none; }
+  .event .date { min-width: 84px; font-size: 12px; color: var(--muted); }
+  .event .name { flex: 1; font-size: 13px; }
+
+  /* NEWS */
+  .news-item { padding: 8px 0; border-bottom: 1px solid var(--panel2); }
+  .news-item:last-child { border-bottom: none; }
+  .news-item .ttl { font-size: 13px; line-height: 1.4; }
+  .news-item .ttl a { color: var(--text); text-decoration: none; }
+  .news-item .meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .news-item .why { font-size: 11px; color: var(--muted); margin-top: 2px; font-style: italic; }
+
+  /* FOOTER */
+  .footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 18px; padding: 14px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <main>
+
+    <!-- HERO -->
+    <div class="hero">
+      <div class="meta">{{ date_str }} · 포트폴리오 일일 리스크 리포트</div>
+      <h1>종합 액션 — {{ overall_label }}</h1>
+      <div class="score-row">
+        <div class="score">{{ '%.1f'|format(risk.overall_score) }}</div>
+        <div class="sep">/ 100</div>
+        <div class="action">{{ overall_recommendation }}</div>
+      </div>
+      <div class="total">총 평가금액 · {{ total_value_str }} · 추적 종목 {{ risk.holdings|length }}개</div>
+    </div>
+
+    {% if summaries and summaries.overall %}
+    <div class="summary overall">
+      <span class="tag">오늘의 시장 총평 (AI)</span>
+      {{ summaries.overall }}
+    </div>
+    {% endif %}
+
+    {% if risk.short_term_warning %}
+    <div class="warn"><b>⚠️ 단기 경고</b> · {{ risk.short_term_warning }}</div>
+    {% endif %}
+    {% if risk.long_term_warning %}
+    <div class="warn critical"><b>🚨 장기 경고</b> · {{ risk.long_term_warning }}</div>
+    {% endif %}
+
+    <!-- SCORE TREND CHART -->
+    {% if history and history|length >= 2 %}
+    <div class="chart-wrap">
+      <h2 style="margin: 0 0 8px; font-size: 14px; color: var(--accent);">최근 {{ history|length }}일 종합점수 추이</h2>
+      <canvas id="trend"></canvas>
+    </div>
+    {% endif %}
+
+    <!-- BENCHMARKS -->
+    <div class="card">
+      <h2>오늘의 시장 (전일 종가)</h2>
+      {% if summaries and summaries.benchmarks %}
+      <div class="summary"><span class="tag">요약</span>{{ summaries.benchmarks }}</div>
+      {% endif %}
+      <table>
+        <tr><th>지수</th><th class="num">종가</th><th class="num">전일대비</th></tr>
+        {% for name, s in benchmarks.items() %}
+        <tr>
+          <td>{{ name }}</td>
+          <td class="num">{{ '{:,.2f}'.format(s.last_close) }}</td>
+          <td class="num {{ 'pos' if s.pct_change >= 0 else 'neg' }}">{{ '{:+.2f}%'.format(s.pct_change) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <!-- MACRO -->
+    <div class="card">
+      <h2>금리 · 환율 · 변동성</h2>
+      {% if summaries and summaries.macro %}
+      <div class="summary"><span class="tag">요약</span>{{ summaries.macro }}</div>
+      {% endif %}
+      <table>
+        <tr><th>항목</th><th class="num">값</th><th class="num">전일대비</th></tr>
+        {% for name, s in fx_macro.items() %}
+        <tr>
+          <td>{{ name }}</td>
+          <td class="num">{{ '{:,.4f}'.format(s.last_close) if s.last_close < 10 else '{:,.2f}'.format(s.last_close) }}</td>
+          <td class="num {{ 'pos' if s.pct_change >= 0 else 'neg' }}">{{ '{:+.2f}%'.format(s.pct_change) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% if yield_curve.spread_10y_3m is not none %}
+      <h3>미국채 수익률곡선</h3>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">10Y</div><div class="val">{{ '%.2f%%'|format(yield_curve.us_10y or 0) }}</div></div>
+        <div class="stat"><div class="label">3M (^IRX)</div><div class="val">{{ '%.2f%%'|format(yield_curve.us_3m or 0) }}</div></div>
+        <div class="stat"><div class="label">30Y</div><div class="val">{{ '%.2f%%'|format(yield_curve.us_30y or 0) }}</div></div>
+        <div class="stat" style="grid-column: 1 / -1;">
+          <div class="label">10Y - 3M 스프레드 {{ '(역전 — 침체 신호)' if yield_curve.inverted else '' }}</div>
+          <div class="val {{ 'neg' if yield_curve.inverted else 'pos' }}">{{ '%+.2f' | format(yield_curve.spread_10y_3m) }}%p</div>
+        </div>
+      </div>
+      {% endif %}
+      {% if fred %}
+      <h3>미국 거시지표 (FRED 최신)</h3>
+      <table>
+        {% for label, val in fred.items() %}
+        <tr><td>{{ label }}</td><td class="num">{{ '{:,.2f}'.format(val) }}</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+
+    <!-- HOLDINGS -->
+    <div class="card">
+      <h2>보유 종목 리스크 · 액션</h2>
+      {% if summaries and summaries.holdings %}
+      <div class="summary"><span class="tag">요약</span>{{ summaries.holdings }}</div>
+      {% endif %}
+      <table>
+        <tr>
+          <th>종목</th>
+          <th class="num">전일</th>
+          <th class="num">비중</th>
+          <th class="num">손익</th>
+          <th class="num">단</th>
+          <th class="num">중</th>
+          <th class="num">장</th>
+          <th class="num">종합</th>
+          <th>액션</th>
+        </tr>
+        {% for h in risk.holdings %}
+        <tr>
+          <td>
+            <b>{{ h.name }}</b>
+            <div class="muted">{{ h.ticker }} · {{ h.market }}</div>
+          </td>
+          <td class="num {{ 'pos' if h.daily_chg >= 0 else 'neg' }}">{{ '{:+.2f}%'.format(h.daily_chg) }}</td>
+          <td class="num">{{ '%.1f%%'|format(h.weight_pct) }}</td>
+          <td class="num {{ 'pos' if h.pnl_pct >= 0 else 'neg' }}">{{ '{:+.1f}%'.format(h.pnl_pct) }}</td>
+          <td class="num">{{ '%.0f'|format(h.short_score) }}</td>
+          <td class="num">{{ '%.0f'|format(h.mid_score) }}</td>
+          <td class="num">{{ '%.0f'|format(h.long_score) }}</td>
+          <td class="num"><b>{{ '%.0f'|format(h.composite) }}</b></td>
+          <td><span class="chip" style="background: {{ action_color[h.action] }};">{{ action_label[h.action] }}</span></td>
+        </tr>
+        {% if h.signals or h.warnings %}
+        <tr><td colspan="9" style="padding: 0 10px 8px;">
+          <details><summary>신호 {{ h.signals|length }}건{% if h.warnings %} · 경고 {{ h.warnings|length }}건{% endif %}</summary>
+          <ul>
+            {% for sig in h.signals %}<li>{{ sig }}</li>{% endfor %}
+            {% for w in h.warnings %}<li class="warn-li">⚠ {{ w }}</li>{% endfor %}
+          </ul>
+          </details>
+        </td></tr>
+        {% endif %}
+        {% endfor %}
+      </table>
+      <div class="muted" style="margin-top: 10px;">
+        점수: 0(매수 우호) ~ 100(매도 우호). 종합 = 단기 30% + 중기 40% + 장기 30%.
+      </div>
+    </div>
+
+    <!-- OTHER HOLDINGS (펀드·연금·채권 등) -->
+    {% if non_tradeable %}
+    <div class="card">
+      <h2>비추적 자산 (펀드·연금·채권·현금) — {{ non_tradeable_total_str }}</h2>
+      <table>
+        <tr><th>카테고리</th><th>항목</th><th class="num">평가금액</th></tr>
+        {% for h in non_tradeable %}
+        <tr>
+          <td><span class="muted">{{ h.category }}</span></td>
+          <td>{{ h.name }}{% if h.provider %} <span class="muted">· {{ h.provider }}</span>{% endif %}</td>
+          <td class="num">{{ '{:,.0f}원'.format(h.value_krw or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      <div class="muted" style="margin-top: 10px;">
+        해당 자산은 일일 가격 추적이 어려워 매크로 신호만 반영됩니다.
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- MACRO NOTES -->
+    {% if risk.macro_notes %}
+    <div class="card">
+      <h2>매크로 코멘트</h2>
+      <ul style="padding-left: 18px; margin: 0;">
+        {% for note in risk.macro_notes %}<li style="font-size: 13px; margin: 4px 0;">{{ note }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <!-- KRX FLOWS -->
+    {% if krx and krx.available %}
+    <div class="card">
+      <h2>KRX 외국인·기관 일별 순매수 (백만원)</h2>
+      <table>
+        <tr><th>일자</th><th class="num">KOSPI 외국인</th><th class="num">KOSPI 기관</th><th class="num">KOSDAQ 외국인</th><th class="num">KOSDAQ 기관</th></tr>
+        {% for i in range(krx.dates|length) %}
+        <tr>
+          <td>{{ krx.dates[i] }}</td>
+          <td class="num {{ 'pos' if krx.kospi_foreign_net[i] >= 0 else 'neg' }}">{{ '{:+,.0f}'.format(krx.kospi_foreign_net[i]) }}</td>
+          <td class="num {{ 'pos' if krx.kospi_inst_net[i] >= 0 else 'neg' }}">{{ '{:+,.0f}'.format(krx.kospi_inst_net[i]) }}</td>
+          <td class="num {{ 'pos' if (krx.kosdaq_foreign_net[i] if i < krx.kosdaq_foreign_net|length else 0) >= 0 else 'neg' }}">{{ '{:+,.0f}'.format(krx.kosdaq_foreign_net[i] if i < krx.kosdaq_foreign_net|length else 0) }}</td>
+          <td class="num {{ 'pos' if (krx.kosdaq_inst_net[i] if i < krx.kosdaq_inst_net|length else 0) >= 0 else 'neg' }}">{{ '{:+,.0f}'.format(krx.kosdaq_inst_net[i] if i < krx.kosdaq_inst_net|length else 0) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+
+    <!-- EVENTS -->
+    {% if events %}
+    <div class="card">
+      <h2>향후 7일 주요 경제 이벤트</h2>
+      {% for ev in events %}
+      <div class="event">
+        <div class="date">{{ ev.when.strftime('%m/%d (%a)') }}</div>
+        <div class="name">
+          <span class="chip chip-sm" style="background: {{ '#ef4444' if ev.importance == 'high' else '#f59e0b' if ev.importance == 'mid' else '#64748b' }};">{{ ev.country }}</span>
+          {{ ev.name }}
+          <span class="muted"> · {{ ev.source }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- NEWS -->
+    {% if news %}
+    <div class="card">
+      <h2>주요 뉴스 헤드라인{{ ' (Claude 감성분석)' if has_claude else '' }}</h2>
+      {% for n in news %}
+      <div class="news-item">
+        <div class="ttl">
+          {% if has_claude %}<span class="chip chip-sm" style="background: {{ '#22c55e' if n.sentiment == 'positive' else '#ef4444' if n.sentiment == 'negative' else '#64748b' }};">{{ n.sentiment }}</span>{% endif %}
+          <a href="{{ n.url }}" target="_blank" rel="noopener noreferrer">{{ n.title }}</a>
+        </div>
+        <div class="meta">{{ n.source }} · {{ n.published }} · 키워드: {{ n.keyword }}</div>
+        {% if n.why %}<div class="why">→ {{ n.why }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="footer">
+      Generated at {{ generated_at }} · 본 리포트는 정보 제공용이며 투자 권유가 아닙니다.<br>
+      {% if is_archive %}<a href="../index.html" style="color: var(--accent);">← 최신 리포트로</a>{% endif %}
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="nav">
+      <h3>액션 등급</h3>
+      <ul>
+        {% for k, v in action_legend.items() %}
+        <li><span class="chip chip-sm" style="background: {{ v[2] }};">{{ k }}</span> {{ v[0] }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    {% if archive_links %}
+    <div class="nav">
+      <h3>아카이브</h3>
+      <ul>
+        {% if not is_archive %}<li class="current">오늘 (최신)</li>{% endif %}
+        {% for a in archive_links %}
+        <li><a href="{{ relative_archive_prefix }}{{ a.url }}">{{ a.date }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </aside>
+</div>
+
+{% if history and history|length >= 2 %}
+<script src="{{ chart_js_src }}"></script>
+<script>
+  const ctx = document.getElementById('trend').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ history | map(attribute='date') | list | tojson }},
+      datasets: [{
+        label: '종합 점수',
+        data: {{ history | map(attribute='score') | list | tojson }},
+        borderColor: '#60a5fa',
+        backgroundColor: 'rgba(96,165,250,0.15)',
+        tension: 0.25,
+        pointRadius: 3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 100, ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.15)' } },
+        x: { ticks: { color: '#94a3b8', maxTicksLimit: 10 }, grid: { display: false } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `점수 ${ctx.parsed.y}` } }
+      }
+    }
+  });
+</script>
+{% endif %}
+
+</body>
+</html>

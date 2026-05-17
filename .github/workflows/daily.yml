@@ -1,0 +1,70 @@
+name: Daily Portfolio Build
+on:
+  schedule:
+    # 22:30 UTC = 07:30 KST (한국 시간 아침)
+    - cron: '30 22 * * *'
+  workflow_dispatch:  # 수동 실행 가능
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore portfolio from Secret
+        # 줄바꿈 보존 + shell injection 방지를 위해 환경변수 + printf 사용
+        env:
+          PORTFOLIO_DATA: ${{ secrets.PORTFOLIO_CSV_DATA }}
+        run: |
+          if [ -n "$PORTFOLIO_DATA" ]; then
+            printf '%s\n' "$PORTFOLIO_DATA" > portfolio.csv
+            echo "portfolio.csv 복원 완료 ($(wc -l < portfolio.csv) lines)"
+          else
+            echo "PORTFOLIO_CSV_DATA secret 미설정 — 샘플 portfolio.csv 사용"
+          fi
+
+      - name: Build site
+        env:
+          USE_EXCEL_PORTFOLIO: 'false'
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          STATICRYPT_PASSWORD: ${{ secrets.STATICRYPT_PASSWORD }}
+        run: python main.py
+
+      - name: Copy dist to root (user site는 main root에서 서빙됨)
+        # ⚠ history.json은 절대 복사하지 않음 — data/history.enc(암호화)만 commit
+        run: |
+          cp dist/index.html ./index.html
+          cp dist/.nojekyll ./.nojekyll
+          cp dist/robots.txt ./robots.txt
+          rm -rf ./archive ./static
+          cp -r dist/archive ./archive
+          cp -r dist/static ./static
+
+      - name: Commit and push
+        # data/history.enc는 다음 빌드의 history 누적용 — 암호문이라 노출돼도 안전
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add index.html archive/ static/ robots.txt .nojekyll data/history.enc
+          if git diff --cached --quiet; then
+            echo "변경 없음 — 커밋 생략"
+          else
+            git commit -m "Daily build $(date -u +%Y-%m-%d_%H:%M)Z"
+            git push
+          fi

@@ -1,0 +1,69 @@
+# ── Environment / credentials — NEVER commit ──
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.*
+credentials.*
+service-account*.json
+
+# Plaintext key memos
+API*Key*.txt
+api*key*.txt
+*api_key*.txt
+*credentials*.txt
+*secret*.txt
+*password*.txt
+
+# Explicit blocks (kept for safety; do not remove)
+/API Key.txt
+/api*key*.txt
+
+# One-shot cleanup script — contains leaked credential strings for safety check.
+# DO NOT commit this script.
+cleanup_and_push.ps1
+
+# Python
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs / cache
+logs/
+*.log
+cache/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Portfolio source files — NEVER commit
+포트폴리오 정리.xlsx
+*.xlsx
+*.xls
+portfolio.csv
+ticker_map.csv
+
+# Build artifacts (only root-copied files are committed)
+dist/
+
+# data/ — only encrypted history.enc allowed
+data/*
+!data/.gitkeep
+!data/history.enc
