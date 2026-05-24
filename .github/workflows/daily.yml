@@ -25,6 +25,49 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Verify required secrets are present
+        # Hard-fail if essential secrets are missing - prevents stale/empty builds.
+        # Values are not echoed, only their presence.
+        env:
+          PORTFOLIO_XLSX_B64:  ${{ secrets.PORTFOLIO_XLSX_B64 }}
+          STATICRYPT_PASSWORD: ${{ secrets.STATICRYPT_PASSWORD }}
+          TICKER_MAP_B64:      ${{ secrets.TICKER_MAP_B64 }}
+          GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
+          FRED_API_KEY:        ${{ secrets.FRED_API_KEY }}
+        run: |
+          set -e
+          fail=0
+          require() {
+            local var="$1"
+            if [ -z "${!var}" ]; then
+              echo "  [REQUIRED MISSING] $var"
+              fail=1
+            else
+              echo "  [ok] $var (${#var} chars)"
+            fi
+          }
+          warn() {
+            local var="$1"
+            if [ -z "${!var}" ]; then
+              echo "  [recommended missing] $var - feature will be skipped"
+            else
+              echo "  [ok] $var"
+            fi
+          }
+          echo "Required:"
+          require PORTFOLIO_XLSX_B64
+          require STATICRYPT_PASSWORD
+          echo "Recommended:"
+          warn TICKER_MAP_B64
+          warn GEMINI_API_KEY
+          warn FRED_API_KEY
+          if [ $fail -ne 0 ]; then
+            echo ""
+            echo "FATAL: required secrets missing. Register them at:"
+            echo "  https://github.com/${{ github.repository }}/settings/secrets/actions"
+            exit 1
+          fi
+
       - name: Restore portfolio + mapping files from Secrets (base64)
         # All sensitive files are stored as base64 in GitHub Secrets and
         # decoded here. They never get committed - .gitignore blocks them.
