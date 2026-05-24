@@ -30,8 +30,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 # 사이트 비밀번호 (StatiCrypt 암호화). 미설정 시 사이트가 평문으로 빌드됨 — 주의!
 STATICRYPT_PASSWORD = os.getenv("STATICRYPT_PASSWORD", "")
 
-# Excel 자동 파싱 사용 여부 (false면 portfolio.csv 사용)
-USE_EXCEL_PORTFOLIO = os.getenv("USE_EXCEL_PORTFOLIO", "true").lower() == "true"
+# 입력 형식 — 기본은 확장 portfolio.csv (plain text).
+# Excel 계속 쓰려면 .env에 USE_EXCEL_PORTFOLIO=true.
+USE_EXCEL_PORTFOLIO = os.getenv("USE_EXCEL_PORTFOLIO", "false").lower() == "true"
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 

@@ -27,11 +27,11 @@ jobs:
 
       - name: Verify required secrets are present
         # Hard-fail if essential secrets are missing - prevents stale/empty builds.
-        # Values are not echoed, only their presence.
+        # Values are not echoed, only their presence/length.
         env:
-          PORTFOLIO_XLSX_B64:  ${{ secrets.PORTFOLIO_XLSX_B64 }}
+          PORTFOLIO_CSV_DATA:  ${{ secrets.PORTFOLIO_CSV_DATA }}
           STATICRYPT_PASSWORD: ${{ secrets.STATICRYPT_PASSWORD }}
-          TICKER_MAP_B64:      ${{ secrets.TICKER_MAP_B64 }}
+          TICKER_MAP_DATA:     ${{ secrets.TICKER_MAP_DATA }}
           GEMINI_API_KEY:      ${{ secrets.GEMINI_API_KEY }}
           FRED_API_KEY:        ${{ secrets.FRED_API_KEY }}
         run: |
@@ -55,10 +55,10 @@ jobs:
             fi
           }
           echo "Required:"
-          require PORTFOLIO_XLSX_B64
+          require PORTFOLIO_CSV_DATA
           require STATICRYPT_PASSWORD
           echo "Recommended:"
-          warn TICKER_MAP_B64
+          warn TICKER_MAP_DATA
           warn GEMINI_API_KEY
           warn FRED_API_KEY
           if [ $fail -ne 0 ]; then
@@ -68,35 +68,33 @@ jobs:
             exit 1
           fi
 
-      - name: Restore portfolio + mapping files from Secrets (base64)
-        # All sensitive files are stored as base64 in GitHub Secrets and
-        # decoded here. They never get committed - .gitignore blocks them.
+      - name: Restore portfolio + mapping files from Secrets (plain text)
         env:
-          PORTFOLIO_XLSX_B64: ${{ secrets.PORTFOLIO_XLSX_B64 }}
-          TICKER_MAP_B64:     ${{ secrets.TICKER_MAP_B64 }}
-          YIELD_MAP_B64:      ${{ secrets.YIELD_MAP_B64 }}
-          BOND_ETF_MAP_B64:   ${{ secrets.BOND_ETF_MAP_B64 }}
-          FUND_MAP_B64:       ${{ secrets.FUND_MAP_B64 }}
+          PORTFOLIO_CSV_DATA: ${{ secrets.PORTFOLIO_CSV_DATA }}
+          TICKER_MAP_DATA:    ${{ secrets.TICKER_MAP_DATA }}
+          YIELD_MAP_DATA:     ${{ secrets.YIELD_MAP_DATA }}
+          BOND_ETF_MAP_DATA:  ${{ secrets.BOND_ETF_MAP_DATA }}
+          FUND_MAP_DATA:      ${{ secrets.FUND_MAP_DATA }}
         run: |
           set -e
-          decode_to() {
+          write_to() {
             local var="$1"; local path="$2"
             if [ -n "${!var}" ]; then
-              echo "${!var}" | base64 -d > "$path"
+              printf '%s' "${!var}" > "$path"
               echo "  restored: $path ($(wc -c < "$path") bytes)"
             else
               echo "  [skip] $var not set"
             fi
           }
-          decode_to PORTFOLIO_XLSX_B64 "포트폴리오 정리.xlsx"
-          decode_to TICKER_MAP_B64     ticker_map.csv
-          decode_to YIELD_MAP_B64      yield_map.csv
-          decode_to BOND_ETF_MAP_B64   bond_etf_map.csv
-          decode_to FUND_MAP_B64       fund_map.csv
+          write_to PORTFOLIO_CSV_DATA portfolio.csv
+          write_to TICKER_MAP_DATA    ticker_map.csv
+          write_to YIELD_MAP_DATA     yield_map.csv
+          write_to BOND_ETF_MAP_DATA  bond_etf_map.csv
+          write_to FUND_MAP_DATA      fund_map.csv
 
       - name: Build site
         env:
-          USE_EXCEL_PORTFOLIO: 'true'
+          USE_EXCEL_PORTFOLIO: 'false'
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

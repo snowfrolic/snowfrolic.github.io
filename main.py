@@ -26,7 +26,7 @@ from collectors.krx_flows import fetch_market_flows
 from collectors.macro import fetch_macro_snapshot
 from collectors.news_sentiment import fetch_news_for_keywords
 from collectors.non_tradeable_pricer import price_non_tradeable
-from collectors.portfolio_loader import load_portfolio_from_excel
+from collectors.portfolio_loader import load_portfolio_from_csv, load_portfolio_from_excel
 from collectors.prices import fetch_benchmarks, fetch_price_series
 from config import (
     ANTHROPIC_API_KEY,
@@ -44,42 +44,30 @@ log = get_logger(__name__)
 
 
 def _load_tradeable_others():
-    """Excel 또는 CSV에서 추적/비추적 분리. 반환은 (tradeable_list_of_dicts, non_tradeable_list)."""
+    """portfolio.csv (확장) 또는 Excel에서 추적/비추적 분리.
+
+    반환: (tradeable_list_of_dicts, non_tradeable_holding_list)
+    """
     if USE_EXCEL_PORTFOLIO:
         tradeable_h, others_h = load_portfolio_from_excel()
-        tradeable = [
-            {
-                "ticker": h.ticker,
-                "name": h.name,
-                "shares": h.quantity or 0,
-                "avg_price": (h.value_krw / h.quantity) if (h.quantity and h.value_krw) else 0,
-                "market": "KR" if h.ticker.endswith((".KS", ".KQ")) else "US",
-                "currency": "KRW" if h.ticker.endswith((".KS", ".KQ")) else "USD",
-                "category": h.category,
-                "init_value_krw": h.value_krw or 0,
-                "return_pct_input": h.return_pct,
-            }
-            for h in tradeable_h
-        ]
-        return tradeable, others_h
+    else:
+        tradeable_h, others_h = load_portfolio_from_csv()
 
-    # 폴백: portfolio.csv
-    df = pd.read_csv(PORTFOLIO_CSV)
     tradeable = [
         {
-            "ticker": str(r["ticker"]).strip(),
-            "name": str(r["name"]).strip(),
-            "shares": float(r["shares"]),
-            "avg_price": float(r["avg_price"]),
-            "market": str(r["market"]).strip(),
-            "currency": str(r["currency"]).strip(),
-            "category": "CSV",
-            "init_value_krw": 0,
-            "return_pct_input": None,
+            "ticker": h.ticker,
+            "name": h.name,
+            "shares": h.quantity or 0,
+            "avg_price": (h.value_krw / h.quantity) if (h.quantity and h.value_krw) else 0,
+            "market": "KR" if (h.ticker or "").endswith((".KS", ".KQ")) else "US",
+            "currency": h.currency or ("KRW" if (h.ticker or "").endswith((".KS", ".KQ")) else "USD"),
+            "category": h.category,
+            "init_value_krw": h.value_krw or 0,
+            "return_pct_input": h.return_pct,
         }
-        for _, r in df.iterrows()
+        for h in tradeable_h
     ]
-    return tradeable, []
+    return tradeable, others_h
 
 
 def run() -> int:

@@ -18,6 +18,7 @@ from config import ROOT, get_logger
 log = get_logger(__name__)
 
 EXCEL_PATH = ROOT / "포트폴리오 정리.xlsx"
+CSV_PATH = ROOT / "portfolio.csv"
 TICKER_MAP_PATH = ROOT / "ticker_map.csv"
 UNMATCHED_LOG = ROOT / "logs" / "unmatched.csv"
 
@@ -292,4 +293,79 @@ def load_portfolio_from_excel(excel_path: Path | None = None) -> tuple[list[Hold
         log.warning(f"티커 매칭 실패 {len(unmatched_tradeable)}건 → {UNMATCHED_LOG}")
 
     log.info(f"파싱 완료: 추적 {len(tradeable)}건, 비추적 {len(others)}건")
+    return tradeable, others
+
+
+# ──────────────────────────────────────────────────────────────────
+# 확장 CSV 파서 (portfolio.csv) — Excel 대체
+# ──────────────────────────────────────────────────────────────────
+
+def _cell(row, key: str):
+    """pandas row의 키 값을 안전하게 가져오기 (NaN/빈문자열은 None)."""
+    v = row.get(key)
+    if v is None:
+        return None
+    if isinstance(v, float) and pd.isna(v):
+        return None
+    s = str(v).strip()
+    if not s or s.lower() in ("nan", "none"):
+        return None
+    return s
+
+
+def _cell_float(row, key: str) -> float | None:
+    s = _cell(row, key)
+    if s is None:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def load_portfolio_from_csv(csv_path: Path | None = None) -> tuple[list[Holding], list[Holding]]:
+    """확장 portfolio.csv 파싱. Excel과 동일한 (tradeable, others) Holding 반환.
+
+    예상 컬럼:
+      category, provider, name, ticker, shares, avg_price,
+      value_krw, return_pct, asset_type, currency, note
+
+    ticker 있으면 tradeable, 없으면 others.
+    """
+    csv_path = csv_path or CSV_PATH
+    if not csv_path.exists():
+        raise FileNotFoundError(f"portfolio.csv 없음: {csv_path}")
+
+    df = pd.read_csv(csv_path, encoding="utf-8-sig")
+
+    holdings: list[Holding] = []
+    for i, r in df.iterrows():
+        ticker = _cell(r, "ticker")
+        name = _cell(r, "name") or ""
+        shares = _cell_float(r, "shares")
+        avg_price = _cell_float(r, "avg_price")
+        value_krw = _cell_float(r, "value_krw")
+        return_pct = _cell_float(r, "return_pct")
+
+        # value_krw가 없고 shares·avg_price가 있으면 계산
+        if value_krw is None and shares and avg_price:
+            value_krw = shares * avg_price
+
+        holdings.append(Holding(
+            no=int(i) + 1,
+            category=_cell(r, "category") or "",
+            provider=_cell(r, "provider") or "",
+            name=name,
+            raw=f"{name} (CSV)",
+            quantity=shares,
+            value_krw=value_krw,
+            return_pct=return_pct,
+            ticker=ticker,
+            asset_type=_cell(r, "asset_type") or "unknown",
+            currency=_cell(r, "currency") or "KRW",
+        ))
+
+    tradeable = [h for h in holdings if h.ticker]
+    others = [h for h in holdings if not h.ticker]
+    log.info(f"CSV 로드 완료: 추적 {len(tradeable)}건, 비추적 {len(others)}건")
     return tradeable, others
