@@ -25,7 +25,9 @@ ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "")
 FINNHUB_KEY = os.getenv("FINNHUB_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+# Empty-or-unset both fall back to default (GitHub Actions may pass empty string
+# when the secret is not registered, so plain `getenv(..., default)` is not enough).
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
 
 # 사이트 비밀번호 (StatiCrypt 암호화). 미설정 시 사이트가 평문으로 빌드됨 — 주의!
 STATICRYPT_PASSWORD = os.getenv("STATICRYPT_PASSWORD", "")
