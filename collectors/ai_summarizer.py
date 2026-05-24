@@ -293,21 +293,30 @@ def generate_summaries(
             timeout=60,
         )
 
+    # 일시적 에러 재시도: 429(quota) + 5xx(서버 일시 장애)
+    RETRY_STATUSES = (429, 500, 502, 503, 504)
+    MAX_RETRIES = 3
     try:
         r = _call_once()
 
-        if r.status_code == 429:
-            log.warning(f"Gemini 429 (quota) — 응답: {r.text[:800]}")
-            delay = 8
+        retry_count = 0
+        while r.status_code in RETRY_STATUSES and retry_count < MAX_RETRIES:
+            retry_count += 1
+            # backoff: 5s, 15s, 45s (또는 retryDelay 따라가기)
+            delay = 5 * (3 ** (retry_count - 1))
             try:
-                for d in r.json().get("error", {}).get("details", []):
+                err_json = r.json().get("error", {})
+                for d in err_json.get("details", []):
                     rd = d.get("retryDelay", "")
                     if rd.endswith("s"):
                         delay = min(60, int(float(rd[:-1])) + 2)
                         break
             except Exception:
                 pass
-            log.info(f"  {delay}s 후 1회 재시도...")
+            log.warning(
+                f"Gemini {r.status_code} (재시도 {retry_count}/{MAX_RETRIES}, {delay}s 후) — "
+                f"응답: {r.text[:300]}"
+            )
             time.sleep(delay)
             r = _call_once()
 
@@ -327,16 +336,20 @@ def generate_summaries(
             log.warning(f"Gemini 응답 구조 이상: {exc}. raw={str(data)[:500]}")
             return SectionSummaries()
     except requests.HTTPError as exc:
+        # exc.response truthy check is wrong: Response.__bool__ is False for 4xx/5xx.
+        # Must use `is not None`.
+        code = "?"
         body_preview = ""
-        try:
-            body_preview = exc.response.text[:500]
-        except Exception:
-            pass
-        code = exc.response.status_code if exc.response else "?"
-        log.warning(f"Gemini HTTP 실패 ({code}): {body_preview}")
+        if exc.response is not None:
+            code = exc.response.status_code
+            try:
+                body_preview = exc.response.text[:500]
+            except Exception:
+                pass
+        log.warning(f"Gemini HTTP 실패 ({code}): {body_preview or '(empty body)'}")
         return SectionSummaries()
     except Exception as exc:
-        log.warning(f"Gemini 호출 실패: {exc}")
+        log.warning(f"Gemini 호출 실패 ({type(exc).__name__}): {exc}")
         return SectionSummaries()
 
     parsed = _parse_json_loose(text)
