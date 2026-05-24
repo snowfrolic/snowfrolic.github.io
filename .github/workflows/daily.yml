@@ -25,29 +25,45 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Restore portfolio from Secret
-        # 줄바꿈 보존 + shell injection 방지를 위해 환경변수 + printf 사용
+      - name: Restore portfolio + mapping files from Secrets (base64)
+        # All sensitive files are stored as base64 in GitHub Secrets and
+        # decoded here. They never get committed - .gitignore blocks them.
         env:
-          PORTFOLIO_DATA: ${{ secrets.PORTFOLIO_CSV_DATA }}
+          PORTFOLIO_XLSX_B64: ${{ secrets.PORTFOLIO_XLSX_B64 }}
+          TICKER_MAP_B64:     ${{ secrets.TICKER_MAP_B64 }}
+          YIELD_MAP_B64:      ${{ secrets.YIELD_MAP_B64 }}
+          BOND_ETF_MAP_B64:   ${{ secrets.BOND_ETF_MAP_B64 }}
+          FUND_MAP_B64:       ${{ secrets.FUND_MAP_B64 }}
         run: |
-          if [ -n "$PORTFOLIO_DATA" ]; then
-            printf '%s\n' "$PORTFOLIO_DATA" > portfolio.csv
-            echo "portfolio.csv 복원 완료 ($(wc -l < portfolio.csv) lines)"
-          else
-            echo "PORTFOLIO_CSV_DATA secret 미설정 — 샘플 portfolio.csv 사용"
-          fi
+          set -e
+          decode_to() {
+            local var="$1"; local path="$2"
+            if [ -n "${!var}" ]; then
+              echo "${!var}" | base64 -d > "$path"
+              echo "  restored: $path ($(wc -c < "$path") bytes)"
+            else
+              echo "  [skip] $var not set"
+            fi
+          }
+          decode_to PORTFOLIO_XLSX_B64 "포트폴리오 정리.xlsx"
+          decode_to TICKER_MAP_B64     ticker_map.csv
+          decode_to YIELD_MAP_B64      yield_map.csv
+          decode_to BOND_ETF_MAP_B64   bond_etf_map.csv
+          decode_to FUND_MAP_B64       fund_map.csv
 
       - name: Build site
         env:
-          USE_EXCEL_PORTFOLIO: 'false'
+          USE_EXCEL_PORTFOLIO: 'true'
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
           STATICRYPT_PASSWORD: ${{ secrets.STATICRYPT_PASSWORD }}
         run: python main.py
 
-      - name: Copy dist to root (user site는 main root에서 서빙됨)
-        # ⚠ history.json은 절대 복사하지 않음 — data/history.enc(암호화)만 commit
+      - name: Copy dist to root
+        # User site serves from main root; copy artifacts.
+        # history.json is NEVER copied (only data/history.enc is committed)
         run: |
           cp dist/index.html ./index.html
           cp dist/.nojekyll ./.nojekyll
@@ -57,13 +73,13 @@ jobs:
           cp -r dist/static ./static
 
       - name: Commit and push
-        # data/history.enc는 다음 빌드의 history 누적용 — 암호문이라 노출돼도 안전
+        # data/history.enc is encrypted, safe to commit and accumulates across runs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add index.html archive/ static/ robots.txt .nojekyll data/history.enc
           if git diff --cached --quiet; then
-            echo "변경 없음 — 커밋 생략"
+            echo "no changes - skip commit"
           else
             git commit -m "Daily build $(date -u +%Y-%m-%d_%H:%M)Z"
             git push
