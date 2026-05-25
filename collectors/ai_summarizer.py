@@ -48,11 +48,36 @@ class SectionDetail:
 
 
 @dataclass
+class RiskTimeframe:
+    """단기/중기/장기별 리스크 평가."""
+    risk_level: str = ""     # "낮음" / "보통" / "높음" / "매우 높음"
+    assessment: str = ""     # 현황 평가 (2-3문장)
+    action: str = ""         # 행동 의견 (1-2문장, → 형태 권고)
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.assessment or self.action)
+
+
+@dataclass
+class RiskAssessment:
+    """포트폴리오 리스크 종합 평가 — 단기/중기/장기."""
+    short_term: RiskTimeframe = field(default_factory=RiskTimeframe)
+    mid_term: RiskTimeframe = field(default_factory=RiskTimeframe)
+    long_term: RiskTimeframe = field(default_factory=RiskTimeframe)
+
+    @property
+    def is_empty(self) -> bool:
+        return self.short_term.is_empty and self.mid_term.is_empty and self.long_term.is_empty
+
+
+@dataclass
 class SectionSummaries:
     overall: SectionDetail = field(default_factory=SectionDetail)
     benchmarks: SectionDetail = field(default_factory=SectionDetail)
     macro: SectionDetail = field(default_factory=SectionDetail)
     holdings: SectionDetail = field(default_factory=SectionDetail)
+    risk_assessment: RiskAssessment = field(default_factory=RiskAssessment)
 
     def is_empty(self) -> bool:
         return all(s.is_empty for s in (self.overall, self.benchmarks, self.macro, self.holdings))
@@ -173,6 +198,16 @@ def _make_facts(
         "fred_indicators": fred_indicators,
         "top_holdings": holdings_data,
         "supply_demand_signals": supply_demand_signals,
+        # 가중평균 시계별 점수 (0=매수 우호, 100=매도 우호)
+        "portfolio_avg_short_score": round(
+            sum(h.short_score * h.weight_pct for h in risk.holdings) / 100, 1
+        ) if risk.holdings else 50,
+        "portfolio_avg_mid_score": round(
+            sum(h.mid_score * h.weight_pct for h in risk.holdings) / 100, 1
+        ) if risk.holdings else 50,
+        "portfolio_avg_long_score": round(
+            sum(h.long_score * h.weight_pct for h in risk.holdings) / 100, 1
+        ) if risk.holdings else 50,
     }
 
 
@@ -222,12 +257,31 @@ facts = {facts_json}
 ▶ holdings — 보유 종목 리스크 (3단계 합 200자 내외)
    top_holdings의 기술적 상태 + 비중·점수 패턴 + 보유 전략 시사점.
 
+▶ risk_assessment — 포트폴리오 리스크 종합 평가 ⭐ 가장 실용적인 섹션
+   모든 지표(매크로·기술적·수급 구조·보유 구성)를 종합 판단해서 단기/중기/장기별 리스크 의견.
+
+   데이터 참고: portfolio_avg_short_score(단기 {portfolio_avg_short_score}점),
+   portfolio_avg_mid_score(중기 {portfolio_avg_mid_score}점),
+   portfolio_avg_long_score(장기 {portfolio_avg_long_score}점) — 0=매수 우호, 100=매도 우호.
+
+   각 시계(short_term/mid_term/long_term)마다:
+   - risk_level: "낮음" / "보통" / "높음" / "매우 높음" (위 점수 + 매크로·수급 신호 종합 판단)
+   - assessment: 현재 보유 자산 구성을 기반으로 왜 그 리스크 수준인지 설명 (2-3문장).
+     단순 지표 나열이 아니라 "이 포트에 어떤 의미인가"를 써야 합니다.
+   - action: 구체적 행동 의견 (1-2문장). "→" 로 시작.
+     예: "→ 보유 유지, 급등 시 상위 비중 종목 일부 차익 실현 고려"
+
 출력 JSON 스키마 (정확히 이 구조):
 {{
   "overall":    {{"observe": "...", "interpret": "...", "implication": "..."}},
   "benchmarks": {{"observe": "...", "interpret": "...", "implication": "..."}},
   "macro":      {{"observe": "...", "interpret": "...", "implication": "..."}},
-  "holdings":   {{"observe": "...", "interpret": "...", "implication": "..."}}
+  "holdings":   {{"observe": "...", "interpret": "...", "implication": "..."}},
+  "risk_assessment": {{
+    "short_term": {{"risk_level": "...", "assessment": "...", "action": "..."}},
+    "mid_term":   {{"risk_level": "...", "assessment": "...", "action": "..."}},
+    "long_term":  {{"risk_level": "...", "assessment": "...", "action": "..."}}
+  }}
 }}
 """
 
@@ -278,6 +332,9 @@ def generate_summaries(
     facts = _make_facts(risk, benchmarks, macro, holdings_with_chg)
     user_prompt = PROMPT_USER_TEMPLATE.format(
         facts_json=json.dumps(facts, ensure_ascii=False),
+        portfolio_avg_short_score=facts.get("portfolio_avg_short_score", 50),
+        portfolio_avg_mid_score=facts.get("portfolio_avg_mid_score", 50),
+        portfolio_avg_long_score=facts.get("portfolio_avg_long_score", 50),
     )
 
     body = {
@@ -368,20 +425,37 @@ def generate_summaries(
         log.warning(f"Gemini 응답 JSON 파싱 실패. 앞 500자: {text[:500]}")
         return SectionSummaries()
 
+    # risk_assessment 파싱
+    ra_raw = parsed.get("risk_assessment", {})
+    ra = RiskAssessment()
+    for tf_key, tf_attr in [("short_term", "short_term"), ("mid_term", "mid_term"), ("long_term", "long_term")]:
+        tf_data = ra_raw.get(tf_key, {})
+        if isinstance(tf_data, dict):
+            setattr(ra, tf_attr, RiskTimeframe(
+                risk_level=str(tf_data.get("risk_level", "")).strip(),
+                assessment=str(tf_data.get("assessment", "")).strip(),
+                action=str(tf_data.get("action", "")).strip(),
+            ))
+
     summaries = SectionSummaries(
         overall=_extract_detail(parsed.get("overall")),
         benchmarks=_extract_detail(parsed.get("benchmarks")),
         macro=_extract_detail(parsed.get("macro")),
         holdings=_extract_detail(parsed.get("holdings")),
+        risk_assessment=ra,
     )
     log.info(
         "Gemini 요약 생성 완료: "
         f"overall={summaries.overall.total_len}자, benchmarks={summaries.benchmarks.total_len}자, "
-        f"macro={summaries.macro.total_len}자, holdings={summaries.holdings.total_len}자"
+        f"macro={summaries.macro.total_len}자, holdings={summaries.holdings.total_len}자, "
+        f"risk_assessment={'OK' if not ra.is_empty else 'empty'}"
     )
     # 디버그: 평문 로그
     for name, s in [("OVERALL", summaries.overall), ("BENCHMARKS", summaries.benchmarks),
                     ("MACRO", summaries.macro), ("HOLDINGS", summaries.holdings)]:
         log.info(f"--- {name} ---\n[관찰] {s.observe}\n[해석] {s.interpret}\n[시사점] {s.implication}")
+    if not ra.is_empty:
+        for tf_name, tf in [("단기", ra.short_term), ("중기", ra.mid_term), ("장기", ra.long_term)]:
+            log.info(f"--- RISK {tf_name} [{tf.risk_level}] ---\n{tf.assessment}\n→ {tf.action}")
 
     return summaries
