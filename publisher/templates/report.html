@@ -413,14 +413,21 @@
     <!-- NEWS -->
     {% if news %}
     <div class="card">
-      <h2>주요 뉴스 헤드라인{{ ' (Claude 감성분석)' if has_claude else '' }}</h2>
+      <h2>주요 뉴스 헤드라인</h2>
       {% for n in news %}
       <div class="news-item">
         <div class="ttl">
-          {% if has_claude %}<span class="chip chip-sm" style="background: {{ '#22c55e' if n.sentiment == 'positive' else '#ef4444' if n.sentiment == 'negative' else '#64748b' }};">{{ n.sentiment }}</span>{% endif %}
+          {% if n.matched_ticker and n.price_reaction_pct is not none %}
+          <span class="chip chip-sm" style="background: {{ '#22c55e' if n.price_reaction_pct >= 2 else '#ef4444' if n.price_reaction_pct <= -2 else '#64748b' }};">
+            {{ n.matched_ticker }} {{ '{:+.1f}%'.format(n.price_reaction_pct) }}
+          </span>
+          {% endif %}
           <a href="{{ n.url }}" target="_blank" rel="noopener noreferrer">{{ n.title }}</a>
         </div>
-        <div class="meta">{{ n.source }} · {{ n.published }} · 키워드: {{ n.keyword }}</div>
+        <div class="meta">
+          {{ n.source }} · {{ n.published }} · 키워드: {{ n.keyword }}
+          {% if n.reaction_signal %} · <span style="color: {{ '#4ade80' if '상승' in n.reaction_signal else '#f87171' if '하락' in n.reaction_signal else '#94a3b8' }};">{{ n.reaction_signal }}</span>{% endif %}
+        </div>
         {% if n.why %}<div class="why">→ {{ n.why }}</div>{% endif %}
       </div>
       {% endfor %}

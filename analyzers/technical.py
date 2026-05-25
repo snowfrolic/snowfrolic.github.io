@@ -47,6 +47,9 @@ class TechSnapshot:
     short_pct_float: float | None = None   # 유통주식 대비 공매도 비율 (%)
     # 섹터 상대강도
     rs_vs_sector_20d: float | None = None  # 섹터 ETF 대비 20일 RS (%p)
+    # VWAP (KIS 분봉 기반)
+    vwap: float | None = None              # 전일 VWAP
+    vwap_position: str = ""                # "above" / "below"
 
 
 # ──────────────────────────────────────────────────────────────────

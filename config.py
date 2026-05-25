@@ -25,9 +25,12 @@ ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY", "")
 FINNHUB_KEY = os.getenv("FINNHUB_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Empty-or-unset both fall back to default (GitHub Actions may pass empty string
-# when the secret is not registered, so plain `getenv(..., default)` is not enough).
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.0-flash"
+
+# 한국투자증권 KIS OpenAPI (외국인·기관 수급 + VWAP)
+KIS_APP_KEY = os.getenv("KIS_APP_KEY", "")
+KIS_APP_SECRET = os.getenv("KIS_APP_SECRET", "")
+KIS_ACCOUNT_NO = os.getenv("KIS_ACCOUNT_NO", "")
 
 # 사이트 비밀번호 (StatiCrypt 암호화). 미설정 시 사이트가 평문으로 빌드됨 — 주의!
 STATICRYPT_PASSWORD = os.getenv("STATICRYPT_PASSWORD", "")

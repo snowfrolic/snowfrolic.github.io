@@ -124,6 +124,15 @@ def _short_term_score(t: TechSnapshot) -> tuple[float, list[str]]:
         score += 12
         signals.append("거래량 급증 + 하락 — 투매성 매물")
 
+    # ── VWAP 위치 (KIS 분봉) ──
+    if t.vwap and t.vwap_position:
+        if t.vwap_position == "above" and t.volume_ratio and t.volume_ratio >= 1.2:
+            score -= 5
+            signals.append(f"VWAP({t.vwap:,.0f}) 위 + 거래량 유지 — 당일 수급 양호")
+        elif t.vwap_position == "below":
+            score += 3
+            signals.append(f"VWAP({t.vwap:,.0f}) 하회 — 당일 수급 약세")
+
     # ── 수급 구조: 52주 신고가 돌파 (v2 신규) ──
     if t.hi52w_breakout_with_vol:
         score -= 8

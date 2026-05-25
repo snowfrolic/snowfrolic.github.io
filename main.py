@@ -22,6 +22,7 @@ from analyzers.technical import compute_tech
 from collectors.ai_summarizer import generate_summaries
 from collectors.calendar import fetch_upcoming_events
 from collectors.fx import fetch_fx
+from collectors.kis_api import fetch_market_investor_flows_kis, fetch_vwap_kis
 from collectors.krx_flows import fetch_market_flows
 from collectors.macro import fetch_macro_snapshot
 from collectors.news_sentiment import enrich_news_with_price, fetch_news_for_keywords
@@ -195,6 +196,17 @@ def run() -> int:
                 sector_etf_cache[setf_ticker], 20
             )
 
+        # 한국 종목에 VWAP 추가 (KIS 분봉)
+        if h["market"] == "KR" and h["ticker"].endswith((".KS", ".KQ")):
+            stock_code = h["ticker"].split(".")[0]
+            vwap = fetch_vwap_kis(stock_code)
+            if vwap:
+                tech.vwap = vwap
+                if tech.close > vwap:
+                    tech.vwap_position = "above"
+                else:
+                    tech.vwap_position = "below"
+
         # 미국 종목에 숏 인터레스트 추가
         if h["market"] == "US":
             si = fetch_short_interest(h["ticker"])
@@ -212,8 +224,22 @@ def run() -> int:
     log.info(f"종합 점수 {risk.overall_score:.1f} → {risk.overall_action}")
 
     log.info("보조 데이터 수집 (KRX 수급)...")
-    krx = fetch_market_flows(days=7)
-    log.info(f"  KRX 가용: {krx.available}")
+    # KIS API 우선 → KRX OTP fallback
+    from collectors.kis_api import InvestorFlows
+    kis_flows = fetch_market_investor_flows_kis(days=7)
+    if kis_flows.available:
+        log.info(f"  KIS 외국인·기관 수급: {len(kis_flows.dates)}일")
+        # KIS 결과를 기존 krx_flows 형식으로 변환 (template 호환)
+        from collectors.krx_flows import KrxFlows
+        krx = KrxFlows(
+            kospi_foreign_net=kis_flows.foreign_net,
+            kospi_inst_net=kis_flows.inst_net,
+            kosdaq_foreign_net=[], kosdaq_inst_net=[],
+            dates=kis_flows.dates, by_ticker={}, available=True,
+        )
+    else:
+        krx = fetch_market_flows(days=7)
+        log.info(f"  KIS 불가 → KRX OTP fallback, 가용: {krx.available}")
 
     log.info("경제 이벤트 캘린더...")
     events = fetch_upcoming_events(days_ahead=14)
