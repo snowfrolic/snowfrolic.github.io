@@ -24,10 +24,10 @@ from collectors.calendar import fetch_upcoming_events
 from collectors.fx import fetch_fx
 from collectors.krx_flows import fetch_market_flows
 from collectors.macro import fetch_macro_snapshot
-from collectors.news_sentiment import fetch_news_for_keywords
+from collectors.news_sentiment import enrich_news_with_price, fetch_news_for_keywords
 from collectors.non_tradeable_pricer import price_non_tradeable
 from collectors.portfolio_loader import load_portfolio_from_csv, load_portfolio_from_excel
-from collectors.prices import fetch_benchmarks, fetch_price_series
+from collectors.prices import fetch_benchmarks, fetch_price_series, fetch_short_interest
 from config import (
     ANTHROPIC_API_KEY,
     BENCHMARKS,
@@ -142,16 +142,66 @@ def run() -> int:
     log.info(f"추적 {total_tradeable_krw:,.0f}원 / 비추적 {total_non_tradeable_krw:,.0f}원")
 
     log.info("기술 지표 + 리스크 평가 (v2: 수급 구조 반영)...")
-    # 벤치마크 daily close 추출 — 상대강도 계산용
+    # 벤치마크 daily close 추출 — 시장 상대강도 계산용
     kospi_close = benchmarks["KOSPI"].daily["Close"].dropna() if "KOSPI" in benchmarks else None
     sp500_close = benchmarks["S&P500"].daily["Close"].dropna() if "S&P500" in benchmarks else None
+
+    # 섹터 ETF daily close 캐시 — 섹터 상대강도 계산용
+    import pandas as pd
+    sector_etf_cache: dict[str, pd.Series | None] = {}
+    try:
+        import csv as csv_mod
+        from config import ROOT
+        tmap_path = ROOT / "ticker_map.csv"
+        if tmap_path.exists():
+            with open(tmap_path, encoding="utf-8-sig") as f:
+                for row in csv_mod.DictReader(f):
+                    setf = (row.get("sector_etf") or "").strip()
+                    if setf and setf not in sector_etf_cache:
+                        sector_etf_cache[setf] = None  # placeholder
+            for setf_ticker in list(sector_etf_cache.keys()):
+                s = fetch_price_series(setf_ticker, setf_ticker)
+                if s and not s.daily.empty:
+                    sector_etf_cache[setf_ticker] = s.daily["Close"].dropna()
+            log.info(f"  섹터 ETF {len([v for v in sector_etf_cache.values() if v is not None])}개 로드")
+    except Exception as exc:
+        log.debug(f"섹터 ETF 로드 실패: {exc}")
+
+    # ticker → sector_etf 매핑
+    ticker_sector_map: dict[str, str] = {}
+    try:
+        if tmap_path.exists():
+            with open(tmap_path, encoding="utf-8-sig") as f:
+                for row in csv_mod.DictReader(f):
+                    tk = (row.get("ticker") or "").strip()
+                    setf = (row.get("sector_etf") or "").strip()
+                    if tk and setf:
+                        ticker_sector_map[tk] = setf
+    except Exception:
+        pass
 
     holdings_risk: list[HoldingRisk] = []
     for h in holdings_value:
         weight = h["value_krw"] / total_tradeable_krw * 100
-        # 한국 종목은 KOSPI, 미국은 S&P500 벤치마크
         market_close = kospi_close if h["market"] == "KR" else sp500_close
         tech = compute_tech(h["series"].daily, h["series"].weekly, market_close)
+
+        # 섹터 상대강도 추가
+        setf_ticker = ticker_sector_map.get(h["ticker"])
+        if setf_ticker and setf_ticker in sector_etf_cache and sector_etf_cache[setf_ticker] is not None:
+            from analyzers.technical import _relative_strength
+            tech.rs_vs_sector_20d = _relative_strength(
+                h["series"].daily["Close"].dropna(),
+                sector_etf_cache[setf_ticker], 20
+            )
+
+        # 미국 종목에 숏 인터레스트 추가
+        if h["market"] == "US":
+            si = fetch_short_interest(h["ticker"])
+            if si:
+                tech.short_ratio = si.get("short_ratio")
+                tech.short_pct_float = si.get("short_pct_float")
+
         holdings_risk.append(evaluate_holding(
             ticker=h["ticker"], name=h["name"], market=h["market"],
             weight_pct=weight, pnl_pct=h["pnl_pct"],
@@ -172,7 +222,10 @@ def run() -> int:
     log.info("뉴스 수집...")
     news_keywords = ["코스피", "FOMC"] + [h.name for h in risk.holdings[:3]]
     news = fetch_news_for_keywords(news_keywords, per_kw=2)
-    log.info(f"  헤드라인 {len(news)}건 (Claude 감성분석: {bool(ANTHROPIC_API_KEY)})")
+    # 뉴스+가격 반응 결합
+    holdings_chg_by_name = {h["name"]: h["daily_chg"] for h in holdings_value}
+    enrich_news_with_price(news, holdings_chg_by_name)
+    log.info(f"  헤드라인 {len(news)}건, 가격반응 매칭 {sum(1 for n in news if n.matched_ticker)}건")
 
     log.info(f"Gemini 섹션 요약 생성 (키 설정: {bool(GEMINI_API_KEY)})...")
     summaries = generate_summaries(risk, benchmarks, macro, holdings_value)

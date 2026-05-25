@@ -33,6 +33,30 @@ class NewsItem:
     sentiment: str = "neutral"   # positive / negative / neutral
     score: float = 0.0           # -1.0 ~ +1.0
     why: str = ""                # 모델 판단 근거 한 줄
+    # 가격 반응 (v2)
+    matched_ticker: str = ""     # 뉴스 keyword와 매칭된 보유 종목 ticker
+    price_reaction_pct: float | None = None  # 해당 종목의 당일 변화율
+    reaction_signal: str = ""    # "호재+상승" / "호재+무반응(선반영)" / "악재+방어" / "악재+급락" 등
+
+
+def enrich_news_with_price(news: list[NewsItem], holdings_chg: dict[str, float]) -> None:
+    """뉴스의 keyword와 보유 종목 이름·티커 매칭 → 당일 가격 변화율 결합.
+
+    holdings_chg: {종목명 또는 ticker: daily_chg %}
+    """
+    for n in news:
+        kw = n.keyword.lower()
+        for name, chg in holdings_chg.items():
+            if kw in name.lower() or name.lower() in kw:
+                n.matched_ticker = name
+                n.price_reaction_pct = chg
+                if chg >= 2:
+                    n.reaction_signal = "상승 반응"
+                elif chg <= -2:
+                    n.reaction_signal = "하락 반응"
+                else:
+                    n.reaction_signal = "약한 반응 (선반영 가능)"
+                break
 
 
 def _fetch_google_news(keyword: str, max_items: int = 5) -> list[NewsItem]:

@@ -170,3 +170,21 @@ def fetch_benchmarks(tickers: dict[str, str]) -> dict[str, PriceSeries]:
         if series:
             out[name] = series
     return out
+
+
+def fetch_short_interest(ticker: str) -> dict | None:
+    """미국 종목의 숏 인터레스트. 한국 종목은 데이터 없어 None."""
+    if _to_fdr_ticker(ticker) is not None:
+        return None
+    try:
+        info = yf.Ticker(ticker).info
+        short_ratio = info.get("shortRatio")
+        short_pct = info.get("shortPercentOfFloat")
+        if short_ratio is None and short_pct is None:
+            return None
+        return {
+            "short_ratio": float(short_ratio) if short_ratio else None,
+            "short_pct_float": round(float(short_pct) * 100, 2) if short_pct else None,
+        }
+    except Exception:
+        return None

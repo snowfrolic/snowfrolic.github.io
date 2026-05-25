@@ -42,6 +42,11 @@ class TechSnapshot:
     turnover_trend: float | None      # 최근 5일 거래대금 / 20일 평균 (>1 = 확대)
     near_52w_high: bool = False       # 52주 범위 95%+ 접근
     hi52w_breakout_with_vol: bool = False  # 52주 접근 + 거래량 1.5배 이상
+    # 숏 인터레스트 (미국 종목만, yfinance info)
+    short_ratio: float | None = None       # days to cover
+    short_pct_float: float | None = None   # 유통주식 대비 공매도 비율 (%)
+    # 섹터 상대강도
+    rs_vs_sector_20d: float | None = None  # 섹터 ETF 대비 20일 RS (%p)
 
 
 # ──────────────────────────────────────────────────────────────────

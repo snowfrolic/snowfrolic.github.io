@@ -181,6 +181,15 @@ def _mid_term_score(t: TechSnapshot) -> tuple[float, list[str]]:
             score -= 5
             signals.append(f"상대강도 양호({t.rs_vs_market_20d:+.1f}%p)")
 
+    # ── 수급 구조: 섹터 상대강도 (v2) ──
+    if t.rs_vs_sector_20d is not None:
+        if t.rs_vs_sector_20d >= 8:
+            score -= 6
+            signals.append(f"섹터 내 강세(+{t.rs_vs_sector_20d:.1f}%p) — 섹터 주도주 후보")
+        elif t.rs_vs_sector_20d <= -8:
+            score += 6
+            signals.append(f"섹터 내 약세({t.rs_vs_sector_20d:+.1f}%p) — 섹터 내 소외")
+
     # ── 수급 구조: 유동성 추세 (v2 신규) ──
     if t.turnover_trend is not None:
         if t.turnover_trend >= 2.0:
@@ -208,6 +217,14 @@ def _long_term_score(t: TechSnapshot, macro: MacroSnapshot) -> tuple[float, list
     if t.ma_weekly_20 and t.close < t.ma_weekly_20:
         score += 5
         signals.append("주봉 20주선 하회")
+
+    # 숏 인터레스트 (미국 종목만)
+    if t.short_pct_float is not None:
+        if t.short_pct_float >= 20:
+            score += 5
+            signals.append(f"높은 공매도 비율({t.short_pct_float:.1f}%) — 시장 의심 높으나 숏커버 가능성도")
+        elif t.short_pct_float >= 10:
+            signals.append(f"공매도 비율 {t.short_pct_float:.1f}% — 주시")
 
     # 수익률곡선 역전 시 모든 보유에 약한 매도 압박
     yc = macro.yield_curve
