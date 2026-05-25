@@ -155,6 +155,24 @@ def _write_robots_txt() -> None:
     )
 
 
+def _restore_existing_archive() -> None:
+    """root archive/ 의 이전 날짜 HTML을 dist/archive/ 에 복사.
+
+    GitHub Actions는 매번 fresh checkout → dist/ 비어있음.
+    repo에 commit된 archive/*.html이 root에 checkout되므로 dist로 복사하여
+    sidebar 링크에 과거 날짜가 보이도록 함. 이미 암호화된 파일은 encrypt_dist에서 skip됨.
+    """
+    import shutil
+    existing = ROOT / "archive"
+    if not existing.exists():
+        return
+    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    for f in existing.glob("*.html"):
+        dest = ARCHIVE_DIR / f.name
+        if not dest.exists():
+            shutil.copy2(f, dest)
+
+
 def build_site(inputs: BuildInputs, password: str = "") -> Path:
     """사이트 빌드. history 암호화에 STATICRYPT_PASSWORD 필요."""
     DIST_DIR.mkdir(parents=True, exist_ok=True)
@@ -163,6 +181,7 @@ def build_site(inputs: BuildInputs, password: str = "") -> Path:
     (DIST_DIR / ".nojekyll").write_text("", encoding="utf-8")
     _copy_static_assets()
     _write_robots_txt()
+    _restore_existing_archive()  # sidebar에 과거 날짜 링크 보존
 
     if not password:
         log.warning("password 없이 build_site 호출 — history 갱신 스킵")
