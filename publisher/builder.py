@@ -77,12 +77,32 @@ def _render(inputs: BuildInputs, history: list[dict], archive_links: list[dict],
     action_color = {k: v[2] for k, v in ACTION_LABELS.items()}
     action_label = {k: v[1] for k, v in ACTION_LABELS.items()}
 
-    now = datetime.now()
+    from datetime import timezone, timedelta
+    KST = timezone(timedelta(hours=9))
+    now = datetime.now(KST)
     total_all = inputs.total_tradeable_krw + inputs.total_non_tradeable_krw
 
     subject = f"[포트 리스크 {risk.overall_action}] {overall_label} · {risk.overall_score:.0f}/100 ({now.strftime('%m/%d')})"
 
     chart_js_src = "../static/chart.umd.min.js" if is_archive else "static/chart.umd.min.js"
+
+    # 데이터 최신 일자 추출 — yfinance가 한국·미국 시장 데이터 동기화에 지연이 있어
+    # 사용자에게 실제 어느 일자 종가인지 명시 (오해 방지)
+    def _last_date(series):
+        try:
+            closes = series.daily["Close"].dropna()
+            if not closes.empty:
+                return closes.index[-1].strftime("%Y-%m-%d")
+        except Exception:
+            pass
+        return None
+
+    bench_dates = {name: _last_date(s) for name, s in inputs.benchmarks.items()}
+    # KR과 US 각각 가장 최근 일자
+    kr_keys = ["KOSPI", "KOSDAQ", "닛케이225", "상해종합"]
+    us_keys = ["S&P500", "NASDAQ", "DOW"]
+    kr_date = next((bench_dates[k] for k in kr_keys if bench_dates.get(k)), None)
+    us_date = next((bench_dates[k] for k in us_keys if bench_dates.get(k)), None)
 
     html = _env().get_template("report.html").render(
         subject=subject,
@@ -112,6 +132,9 @@ def _render(inputs: BuildInputs, history: list[dict], archive_links: list[dict],
         is_archive=is_archive,
         relative_archive_prefix="../" if is_archive else "",
         chart_js_src=chart_js_src,
+        bench_dates=bench_dates,
+        kr_data_date=kr_date,
+        us_data_date=us_date,
     )
     return subject, html
 

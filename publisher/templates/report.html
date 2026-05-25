@@ -178,14 +178,21 @@
     <!-- BENCHMARKS -->
     <div class="card">
       <h2>오늘의 시장 (전일 종가)</h2>
+      <div class="muted" style="font-size:12px; margin:-6px 0 10px 14px;">
+        기준일 — {% if kr_data_date %}KR <b>{{ kr_data_date }}</b>{% endif %}
+        {% if kr_data_date and us_data_date %} · {% endif %}
+        {% if us_data_date %}US <b>{{ us_data_date }}</b>{% endif %}
+        <span style="color:#94a3b8;"> (yfinance 동기화 지연 시 1~2일 옛 데이터일 수 있음)</span>
+      </div>
       {% if summaries %}{{ render_summary(summaries.benchmarks, '', '요약') }}{% endif %}
       <table>
-        <tr><th>지수</th><th class="num">종가</th><th class="num">전일대비</th></tr>
+        <tr><th>지수</th><th class="num">종가</th><th class="num">전일대비</th><th>기준일</th></tr>
         {% for name, s in benchmarks.items() %}
         <tr>
           <td>{{ name }}</td>
           <td class="num">{{ '{:,.2f}'.format(s.last_close) }}</td>
           <td class="num {{ 'pos' if s.pct_change >= 0 else 'neg' }}">{{ '{:+.2f}%'.format(s.pct_change) }}</td>
+          <td class="muted" style="font-size:11px;">{{ bench_dates.get(name, '-') }}</td>
         </tr>
         {% endfor %}
       </table>

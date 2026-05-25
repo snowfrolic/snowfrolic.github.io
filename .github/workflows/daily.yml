@@ -108,15 +108,15 @@ jobs:
         run: python main.py
 
       - name: Copy dist to root
-        # User site serves from main root; copy artifacts.
-        # history.json is NEVER copied (only data/history.enc is committed)
+        # Keep existing archive files (historical daily reports) and ADD today's.
+        # DO NOT rm -rf archive — that deletes all past dates!
         run: |
           cp dist/index.html ./index.html
           cp dist/.nojekyll ./.nojekyll
           cp dist/robots.txt ./robots.txt
-          rm -rf ./archive ./static
-          cp -r dist/archive ./archive
-          cp -r dist/static ./static
+          mkdir -p ./archive ./static
+          cp -r dist/archive/* ./archive/ 2>/dev/null || true
+          cp -r dist/static/* ./static/ 2>/dev/null || true
 
       - name: Commit and push
         # data/history.enc is encrypted, safe to commit and accumulates across runs

@@ -26,13 +26,15 @@ $Action = New-ScheduledTaskAction `
     -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Script`"" `
     -WorkingDirectory $ScriptDir
 
-$Trigger = New-ScheduledTaskTrigger -Daily -At 7:30am
+$Trigger = New-ScheduledTaskTrigger -Daily -At "7:30 AM"
 
+# 잠자기 상태이면 깨워서 실행하는 옵션은 Settings의 -WakeToRun 으로 처리
 $Settings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
     -StartWhenAvailable `
     -RunOnlyIfNetworkAvailable `
+    -WakeToRun `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 
 $Principal = New-ScheduledTaskPrincipal `
@@ -50,7 +52,7 @@ Register-ScheduledTask `
 
 Write-Host ""
 Write-Host "[OK] 작업 등록 완료: $TaskName" -ForegroundColor Green
-Write-Host "     실행 시각: 매일 07:30"
+Write-Host "     실행 시각: 매일 07:30 (잠자기 상태면 깨워서 실행)"
 Write-Host "     스크립트: $Script"
 Write-Host ""
 Write-Host "지금 한 번 실행:" -ForegroundColor Cyan

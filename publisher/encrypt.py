@@ -132,9 +132,19 @@ function cacheGet() {{
 }}
 function cacheClear() {{ try {{ sessionStorage.removeItem(PW_KEY); }} catch(e) {{}} }}
 
-// 페이지 가시성 잃을 때 비번 즉시 삭제 (탭 전환·창 최소화 시 보안 강화)
+// 같은 사이트 내 archive 페이지 간 이동은 hidden->visible을 매우 빠르게 거치므로
+// hidden 상태가 30초 이상 지속되어 visible로 돌아왔을 때만 캐시 만료.
+// 짧은 페이지 이동에서는 캐시 유지 -> 한 번 로그인하면 모든 archive 자유 이동.
+let _hiddenSince = 0;
 document.addEventListener("visibilitychange", () => {{
-  if (document.visibilityState === "hidden") cacheClear();
+  if (document.visibilityState === "hidden") {{
+    _hiddenSince = Date.now();
+  }} else if (_hiddenSince > 0 && Date.now() - _hiddenSince > 30000) {{
+    cacheClear();
+    _hiddenSince = 0;
+  }} else {{
+    _hiddenSince = 0;
+  }}
 }});
 
 async function decryptAndShow(password) {{

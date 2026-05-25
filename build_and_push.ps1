@@ -1,41 +1,88 @@
-# 로컬 빌드 + git push (Windows Task Scheduler 모드용)
-# 사용법:
-#   .\build_and_push.ps1
-# 처음 실행 전 한 번:
-#   git init; git remote add origin https://github.com/snowfrolic/snowfrolic.github.io.git
-#   git branch -M main; git pull origin main --allow-unrelated-histories
+# Daily build + git push (for Windows Task Scheduler)
+# Output is appended to logs\build.log for diagnostics (esp. non-interactive runs)
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $ScriptDir = $PSScriptRoot
 Set-Location $ScriptDir
 
+if (-not (Test-Path logs)) { New-Item -ItemType Directory -Path logs | Out-Null }
+$LogFile = Join-Path $ScriptDir "logs\build.log"
+
+function Write-Log($Message) {
+    $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "$stamp $Message"
+    Write-Host $line
+    Add-Content -Path $LogFile -Value $line -Encoding UTF8
+}
+
+Write-Log "===== BUILD START ====="
+
+# venv
 if (Test-Path ".venv\Scripts\Activate.ps1") {
     & ".venv\Scripts\Activate.ps1"
+    Write-Log "[venv] activated"
 }
 
-Write-Host "[1/4] 사이트 빌드..." -ForegroundColor Cyan
-python main.py
-if ($LASTEXITCODE -ne 0) { Write-Error "빌드 실패"; exit $LASTEXITCODE }
+# resolve git path (Task Scheduler PATH may be limited)
+$gitExe = "git"
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    $candidates = @("C:\Program Files\Git\cmd\git.exe", "C:\Program Files\Git\bin\git.exe")
+    foreach ($c in $candidates) { if (Test-Path $c) { $gitExe = $c; break } }
+}
+Write-Log "[git] using $gitExe"
 
-Write-Host "[2/4] dist를 root에 동기화..." -ForegroundColor Cyan
-# ⚠ history.json은 절대 복사하지 않음 — data/history.enc(암호화)만 commit
+# [1] build
+Write-Log "[1/4] python main.py"
+$pyOut = & python main.py 2>&1
+$pyExit = $LASTEXITCODE
+foreach ($l in $pyOut) { Add-Content -Path $LogFile -Value $l -Encoding UTF8 }
+if ($pyExit -ne 0) {
+    Write-Log "[FAIL] build exit $pyExit"
+    exit $pyExit
+}
+Write-Log "[OK] build done"
+
+# [2] copy dist to root
+Write-Log "[2/4] copy dist to root"
 Copy-Item -Force "dist\index.html" ".\index.html"
-Copy-Item -Force "dist\.nojekyll" ".\.nojekyll"
+Copy-Item -Force "dist\.nojekyll"  ".\.nojekyll"
 Copy-Item -Force "dist\robots.txt" ".\robots.txt"
-if (Test-Path ".\archive") { Remove-Item -Recurse -Force ".\archive" }
-if (Test-Path ".\static")  { Remove-Item -Recurse -Force ".\static" }
-Copy-Item -Recurse "dist\archive" ".\archive"
-Copy-Item -Recurse "dist\static"  ".\static"
+# Keep existing archive (past daily reports) + add today's. DO NOT rm -rf archive!
+if (-not (Test-Path ".\archive")) { New-Item -ItemType Directory -Path ".\archive" | Out-Null }
+if (-not (Test-Path ".\static"))  { New-Item -ItemType Directory -Path ".\static"  | Out-Null }
+Copy-Item -Force "dist\archive\*" ".\archive\"
+Copy-Item -Force "dist\static\*" ".\static\"
+Write-Log "[OK] copy done"
 
-Write-Host "[3/4] git commit + push..." -ForegroundColor Cyan
-git add index.html archive/ static/ robots.txt .nojekyll data/history.enc
-$status = git status --porcelain
-if (-not $status) {
-    Write-Host "  변경 없음 — 커밋 생략" -ForegroundColor Yellow
+# [3] git add / commit
+Write-Log "[3/4] git add + commit"
+$addOut = & $gitExe add index.html "archive/" "static/" robots.txt .nojekyll "data/history.enc" 2>&1
+foreach ($l in $addOut) { Add-Content -Path $LogFile -Value "  [add] $l" -Encoding UTF8 }
+
+$cached = & $gitExe diff --cached --name-only
+if (-not $cached) {
+    Write-Log "[SKIP] no staged changes"
 } else {
-    $msg = "Daily build $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
-    git commit -m $msg
-    git push
+    Write-Log "[stage] $($cached.Count) files"
+    $msg = "Daily build " + (Get-Date -Format "yyyy-MM-dd HH:mm")
+    $commitOut = & $gitExe commit -m $msg 2>&1
+    foreach ($l in $commitOut) { Add-Content -Path $LogFile -Value "  [commit] $l" -Encoding UTF8 }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "[FAIL] commit exit $LASTEXITCODE"
+        exit $LASTEXITCODE
+    }
+    Write-Log "[OK] commit"
 }
 
-Write-Host "[4/4] 완료 → https://snowfrolic.github.io" -ForegroundColor Green
+# [4] push (always try - covers accumulated local commits too)
+Write-Log "[4/4] git push origin main"
+$pushOut = & $gitExe push origin main 2>&1
+$pushExit = $LASTEXITCODE
+foreach ($l in $pushOut) { Add-Content -Path $LogFile -Value "  [push] $l" -Encoding UTF8 }
+if ($pushExit -ne 0) {
+    Write-Log "[FAIL] push exit $pushExit - check credential or network"
+    Write-Log "[hint] try in interactive PowerShell: git push origin main"
+    exit 0
+}
+Write-Log "[OK] push done"
+Write-Log "===== BUILD COMPLETE ====="
