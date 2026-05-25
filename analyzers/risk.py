@@ -59,61 +59,87 @@ class PortfolioRisk:
 
 
 def _short_term_score(t: TechSnapshot) -> tuple[float, list[str]]:
-    """일봉 단기(1~2주) 리스크. 100=매도, 0=매수."""
+    """일봉 단기(1~2주) 리스크. 100=매도, 0=매수.
+
+    v2: RSI·MACD·BB 가중치 ↓, 거래량 돌파·신고가 돌파 가중치 ↑.
+    핵심 원칙: 보조지표보다 실제 수급(거래량·가격 반응)이 중요.
+    """
     score = 50.0
     signals: list[str] = []
 
+    # RSI (가중치 ↓: 18→12, 8→5)
     if t.rsi14 is not None:
         if t.rsi14 >= 75:
-            score += 18
+            score += 12
             signals.append(f"RSI 과열({t.rsi14:.0f})")
         elif t.rsi14 >= 65:
-            score += 8
+            score += 5
             signals.append(f"RSI 상승 과열권({t.rsi14:.0f})")
         elif t.rsi14 <= 25:
-            score -= 18
+            score -= 12
             signals.append(f"RSI 과매도({t.rsi14:.0f}) → 반등 기회")
         elif t.rsi14 <= 35:
-            score -= 8
+            score -= 5
             signals.append(f"RSI 침체권({t.rsi14:.0f})")
 
+    # 볼린저 (가중치 ↓: 12→8)
     if t.bb_pct is not None:
         if t.bb_pct >= 1.0:
-            score += 12
+            score += 8
             signals.append("볼린저 상단 돌파(과열)")
         elif t.bb_pct >= 0.85:
-            score += 5
+            score += 3
         elif t.bb_pct <= 0.0:
-            score -= 12
+            score -= 8
             signals.append("볼린저 하단 이탈(과매도)")
         elif t.bb_pct <= 0.15:
-            score -= 5
+            score -= 3
 
+    # MACD (가중치 ↓: 8→5)
     if t.macd is not None and t.macd_signal is not None:
         if t.macd < t.macd_signal and (t.macd_hist or 0) < 0:
-            score += 8
+            score += 5
             signals.append("MACD 하향 돌파")
         elif t.macd > t.macd_signal and (t.macd_hist or 0) > 0:
-            score -= 8
+            score -= 5
             signals.append("MACD 상향 돌파")
 
+    # 이격도 (가중치 ↓: 8→6)
     if t.disparity_20 is not None:
         if t.disparity_20 >= 110:
-            score += 8
+            score += 6
             signals.append(f"20일선 이격도 {t.disparity_20:.1f} (과열)")
         elif t.disparity_20 <= 92:
-            score -= 8
+            score -= 6
             signals.append(f"20일선 이격도 {t.disparity_20:.1f} (과매도)")
 
-    if t.volume_ratio is not None and t.volume_ratio >= 2.0 and (t.chg_1d or 0) < -2:
-        score += 10
+    # ── 수급 구조: 거래량 돌파 (v2 신규·강화) ──
+    if t.volume_breakout == "bearish":
+        score += 12
+        signals.append("거래량 돌파 하락 (평균 2배+ 거래량 + 하락) — 투매성 매물")
+    elif t.volume_breakout == "bullish":
+        score -= 10
+        signals.append("거래량 돌파 상승 (평균 2배+ 거래량 + 상승) — 수급 유입")
+    elif t.volume_ratio is not None and t.volume_ratio >= 2.0 and (t.chg_1d or 0) < -2:
+        score += 12
         signals.append("거래량 급증 + 하락 — 투매성 매물")
+
+    # ── 수급 구조: 52주 신고가 돌파 (v2 신규) ──
+    if t.hi52w_breakout_with_vol:
+        score -= 8
+        signals.append("52주 신고가 접근 + 거래량 동반 — 매물 부담 적고 추세 추종 자금 유입 가능")
+    elif t.near_52w_high:
+        score -= 3
+        signals.append("52주 신고가 접근 — 상방 열림")
 
     return _clip(score), signals
 
 
 def _mid_term_score(t: TechSnapshot) -> tuple[float, list[str]]:
-    """중기(1~6개월) — 이동평균 배열 중심."""
+    """중기(1~6개월) — 이평선 배열 + 상대강도 + 유동성.
+
+    v2: 상대강도(RS)·유동성(turnover_trend) 반영.
+    """
     score = 50.0
     signals: list[str] = []
 
@@ -139,6 +165,30 @@ def _mid_term_score(t: TechSnapshot) -> tuple[float, list[str]]:
             signals.append(f"20일 누적 {t.chg_20d:+.1f}%")
         elif t.chg_20d >= 15:
             score += 4
+
+    # ── 수급 구조: 시장 대비 상대강도 (v2 신규) ──
+    if t.rs_vs_market_20d is not None:
+        if t.rs_vs_market_20d <= -10:
+            score += 10
+            signals.append(f"상대강도 약({t.rs_vs_market_20d:+.1f}%p) — 시장 대비 열위")
+        elif t.rs_vs_market_20d <= -5:
+            score += 5
+            signals.append(f"상대강도 부진({t.rs_vs_market_20d:+.1f}%p)")
+        elif t.rs_vs_market_20d >= 10:
+            score -= 10
+            signals.append(f"상대강도 강({t.rs_vs_market_20d:+.1f}%p) — 시장 대비 우위 (주도주 후보)")
+        elif t.rs_vs_market_20d >= 5:
+            score -= 5
+            signals.append(f"상대강도 양호({t.rs_vs_market_20d:+.1f}%p)")
+
+    # ── 수급 구조: 유동성 추세 (v2 신규) ──
+    if t.turnover_trend is not None:
+        if t.turnover_trend >= 2.0:
+            score -= 5
+            signals.append(f"유동성 확대(거래대금 5일/20일 = {t.turnover_trend:.1f}x) — 시장 관심 증가")
+        elif t.turnover_trend <= 0.5:
+            score += 5
+            signals.append(f"유동성 위축(거래대금 5일/20일 = {t.turnover_trend:.1f}x) — 시장 소외")
 
     return _clip(score), signals
 

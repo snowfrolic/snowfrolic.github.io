@@ -141,11 +141,17 @@ def run() -> int:
     total_non_tradeable_krw = sum((h.value_krw or 0) for h in non_tradeable)
     log.info(f"추적 {total_tradeable_krw:,.0f}원 / 비추적 {total_non_tradeable_krw:,.0f}원")
 
-    log.info("기술 지표 + 리스크 평가...")
+    log.info("기술 지표 + 리스크 평가 (v2: 수급 구조 반영)...")
+    # 벤치마크 daily close 추출 — 상대강도 계산용
+    kospi_close = benchmarks["KOSPI"].daily["Close"].dropna() if "KOSPI" in benchmarks else None
+    sp500_close = benchmarks["S&P500"].daily["Close"].dropna() if "S&P500" in benchmarks else None
+
     holdings_risk: list[HoldingRisk] = []
     for h in holdings_value:
         weight = h["value_krw"] / total_tradeable_krw * 100
-        tech = compute_tech(h["series"].daily, h["series"].weekly)
+        # 한국 종목은 KOSPI, 미국은 S&P500 벤치마크
+        market_close = kospi_close if h["market"] == "KR" else sp500_close
+        tech = compute_tech(h["series"].daily, h["series"].weekly, market_close)
         holdings_risk.append(evaluate_holding(
             ticker=h["ticker"], name=h["name"], market=h["market"],
             weight_pct=weight, pnl_pct=h["pnl_pct"],
