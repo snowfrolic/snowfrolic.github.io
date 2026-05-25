@@ -80,7 +80,7 @@ def fetch_investor_flows_kis(stock_code: str, days: int = 10) -> InvestorFlows:
 
     try:
         r = requests.get(
-            f"{BASE_URL}/uapi/domestic-stock/v1/quotations/investor",
+            f"{BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-investor",
             headers=_headers("FHKST01010900"),
             params={
                 "FID_COND_MRKT_DIV_CODE": "J",
@@ -124,7 +124,7 @@ def fetch_market_investor_flows_kis(days: int = 10) -> InvestorFlows:
 
     try:
         r = requests.get(
-            f"{BASE_URL}/uapi/domestic-stock/v1/quotations/investor",
+            f"{BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-investor",
             headers=_headers("FHKST03010100"),
             params={
                 "FID_COND_MRKT_DIV_CODE": "J",
