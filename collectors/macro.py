@@ -118,7 +118,8 @@ def fetch_fred() -> dict[str, float]:
                     out[label] = float(val)
                     break
         except Exception as exc:
-            log.warning(f"FRED {code} 수집 실패: {exc}")
+            from collectors._log_safe import safe_error_msg
+            log.warning(f"FRED {code} 수집 실패: {safe_error_msg(exc)}")
     return out
 
 

@@ -69,7 +69,8 @@ def _fetch_ecos(stat_code: str, cycle: str, item_code: str, periods: int = 2) ->
         rows.sort(key=lambda x: x.get("TIME", ""), reverse=True)
         return rows[:periods + 12]  # YoY 계산을 위해 +12개월
     except Exception as exc:
-        log.debug(f"ECOS 호출 실패 ({stat_code}/{item_code}): {exc}")
+        from collectors._log_safe import safe_error_msg
+        log.debug(f"ECOS 호출 실패 ({stat_code}/{item_code}): {safe_error_msg(exc)}")
         return []
 
 
