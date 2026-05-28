@@ -81,9 +81,10 @@ def _fetch_google_news(keyword: str, max_items: int = 5) -> list[NewsItem]:
         pub = _xml_field(blob, "pubDate")
         source = _xml_field(blob, "source")
         if title:
+            from collectors._log_safe import safe_url
             out.append(NewsItem(
                 title=_strip_cdata(title),
-                url=link,
+                url=safe_url(link),
                 source=_strip_cdata(source) or "Google News",
                 published=_parse_pub(pub),
                 keyword=keyword,

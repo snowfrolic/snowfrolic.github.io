@@ -31,6 +31,16 @@ log = get_logger(__name__)
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
+def _safe_url_local(url) -> str:
+    """모듈 내부 URL 검증 — http/https만 허용."""
+    if not url:
+        return ""
+    s = str(url).strip().lower()
+    if s.startswith(("https://", "http://")):
+        return str(url).strip()
+    return ""
+
+
 @dataclass
 class SectionDetail:
     """3단계 인사이트 구조."""
@@ -380,7 +390,8 @@ def _make_facts(
         "portfolio_profile_raw": portfolio_profile_data,  # 자산/지역/섹터 배분 등
         "news_headlines": [
             {
-                "title": n.title, "source": n.source, "url": n.url,
+                "title": n.title, "source": n.source,
+                "url": _safe_url_local(n.url),
                 "keyword": n.keyword, "matched_ticker": n.matched_ticker,
                 "price_reaction_pct": n.price_reaction_pct,
             } for n in (news_items or [])
@@ -776,7 +787,8 @@ def generate_summaries(
                     note=str(k.get("note", "")).strip(),
                 ) for k in ki_raw if isinstance(k, dict)
             ]
-        # impact_news
+        # impact_news (URL은 안전 스키마만 통과)
+        from collectors._log_safe import safe_url
         in_raw = db_raw.get("impact_news", [])
         if isinstance(in_raw, list):
             db.impact_news = [
@@ -785,7 +797,7 @@ def generate_summaries(
                     impact=str(n.get("impact", "")).strip(),
                     affects=str(n.get("affects", "")).strip(),
                     summary=str(n.get("summary", "")).strip(),
-                    url=str(n.get("url", "")).strip(),
+                    url=safe_url(n.get("url", "")),
                 ) for n in in_raw if isinstance(n, dict)
             ]
         # undervalued_picks

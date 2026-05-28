@@ -43,3 +43,20 @@ def mask_secrets(text: str) -> str:
 def safe_error_msg(exc: BaseException) -> str:
     """예외 객체의 메시지를 마스킹해서 반환."""
     return mask_secrets(str(exc))
+
+
+def safe_url(url: str | None) -> str:
+    """안전한 URL만 통과 — http/https 스키마만 허용.
+
+    javascript:, data:, file:, vbscript: 등 위험 스키마 차단 → XSS 방어.
+    """
+    if not url:
+        return ""
+    url = str(url).strip()
+    if not url:
+        return ""
+    # 소문자 변환 후 검사
+    lower = url.lower()
+    if lower.startswith(("https://", "http://")):
+        return url
+    return ""
