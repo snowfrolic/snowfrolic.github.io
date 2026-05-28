@@ -22,7 +22,11 @@ from analyzers.technical import compute_tech
 from collectors.ai_summarizer import generate_summaries
 from collectors.calendar import fetch_upcoming_events
 from collectors.fx import fetch_fx
-from collectors.kis_api import fetch_market_investor_flows_kis, fetch_vwap_kis
+from collectors.kis_api import (
+    fetch_market_investor_flows_kis,
+    fetch_portfolio_investor_flows_kis,
+    fetch_vwap_kis,
+)
 from collectors.krx_flows import fetch_market_flows
 from collectors.cot_flows import fetch_cot_sp500, fetch_etf_flows
 from collectors.ecos import fetch_korea_macro
@@ -230,9 +234,20 @@ def run() -> int:
     log.info(f"종합 점수 {risk.overall_score:.1f} → {risk.overall_action}")
 
     log.info("보조 데이터 수집 (KRX 수급)...")
-    # KIS API 우선 → KRX OTP fallback
+    # 1순위: KIS 시장 전체 endpoint 시도 → 빈 응답이면
+    # 2순위: 보유 한국 종목들 합산
+    # 3순위: KRX OTP fallback
     from collectors.kis_api import InvestorFlows
     kis_flows = fetch_market_investor_flows_kis(days=7)
+    if not kis_flows.available:
+        # 시장 전체 안 되면 보유 종목 합산
+        kr_codes = [
+            h["ticker"].split(".")[0] for h in holdings_value
+            if h["ticker"].endswith((".KS", ".KQ"))
+        ]
+        if kr_codes:
+            kis_flows = fetch_portfolio_investor_flows_kis(kr_codes, days=7)
+
     if kis_flows.available:
         log.info(f"  KIS 외국인·기관 수급: {len(kis_flows.dates)}일")
         # KIS 결과를 기존 krx_flows 형식으로 변환 (template 호환)

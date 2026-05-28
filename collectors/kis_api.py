@@ -111,6 +111,71 @@ def fetch_investor_flows_kis(stock_code: str, days: int = 10) -> InvestorFlows:
         return InvestorFlows()
 
 
+def fetch_portfolio_investor_flows_kis(
+    stock_codes: list[str], days: int = 7
+) -> InvestorFlows:
+    """보유 종목들의 종목별 매매동향을 합산해 포트 전체 수급 추정.
+
+    시장 전체 endpoint가 빈 응답 반환하는 이슈 회피.
+    각 종목의 외국인·기관 순매수 수량을 일별 합산 (백만주 단위 → 백만원 단위는 가격 가중 필요하나 단순 합산).
+    """
+    if not _is_available() or not stock_codes:
+        return InvestorFlows()
+    token = _get_token()
+    if not token:
+        return InvestorFlows()
+
+    end = datetime.now().strftime("%Y%m%d")
+    start = (datetime.now() - timedelta(days=days + 14)).strftime("%Y%m%d")
+
+    # 종목별 데이터 모으기 — date -> {foreign, inst}
+    daily_sum: dict[str, dict[str, float]] = {}
+    n_ok = 0
+    for code in stock_codes[:10]:  # 상위 10종목만 (API 호출 부담 줄임)
+        try:
+            r = requests.get(
+                f"{BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-investor",
+                headers=_headers("FHKST01010900"),
+                params={
+                    "FID_COND_MRKT_DIV_CODE": "J",
+                    "FID_INPUT_ISCD": code,
+                    "FID_INPUT_DATE_1": start,
+                    "FID_INPUT_DATE_2": end,
+                    "FID_PERIOD_DIV_CODE": "D",
+                },
+                timeout=15,
+            )
+            r.raise_for_status()
+            items = r.json().get("output", [])[:days]
+            if items:
+                n_ok += 1
+            for item in items:
+                d = item.get("stck_bsop_date", "")
+                if not d:
+                    continue
+                fg = float(item.get("frgn_ntby_qty", 0))
+                ig = float(item.get("orgn_ntby_qty", 0))
+                if d not in daily_sum:
+                    daily_sum[d] = {"foreign": 0.0, "inst": 0.0}
+                daily_sum[d]["foreign"] += fg / 1000  # 천 주 단위
+                daily_sum[d]["inst"] += ig / 1000
+        except Exception as exc:
+            log.debug(f"KIS 종목 {code} 매매동향 실패: {exc}")
+
+    if not daily_sum:
+        log.info("KIS 종목별 매매동향: 데이터 없음")
+        return InvestorFlows()
+
+    sorted_dates = sorted(daily_sum.keys())[-days:]
+    foreign_net = [daily_sum[d]["foreign"] for d in sorted_dates]
+    inst_net = [daily_sum[d]["inst"] for d in sorted_dates]
+
+    log.info(f"KIS 보유 종목 {n_ok}개 매매동향 합산: {len(sorted_dates)}일")
+    return InvestorFlows(
+        dates=sorted_dates, foreign_net=foreign_net, inst_net=inst_net, available=True
+    )
+
+
 def fetch_market_investor_flows_kis(days: int = 10) -> InvestorFlows:
     """KOSPI 시장 전체 외국인·기관 동향. 종목코드 대신 시장 코드."""
     if not _is_available():

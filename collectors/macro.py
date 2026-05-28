@@ -78,7 +78,7 @@ FRED_SERIES = {
     # 고용·경기
     "UNRATE": "미국 실업률(%)",
     "PAYEMS": "비농업 고용자수(천명)",
-    "NAPM": "미국 ISM 제조업 PMI",
+    "INDPRO": "미국 산업생산지수",  # NAPM 종료 → INDPRO (경기 선행 동등)
     # 신용·유동성
     "BAMLH0A0HYM2": "미국 하이일드 스프레드(%)",
     "WALCL": "Fed 대차대조표(백만달러)",
