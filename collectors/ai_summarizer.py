@@ -152,6 +152,9 @@ def _make_facts(
     put_call: Any = None,
     aaii: Any = None,
     krx_flows: Any = None,
+    eps_revisions: list = None,
+    cot: Any = None,
+    etf_flows: list = None,
 ) -> dict:
     """모델에 전달할 사실 데이터. FRED 거시지표 포함."""
     bench = {name: _series_stats(s) for name, s in benchmarks.items()}
@@ -262,6 +265,24 @@ def _make_facts(
             "kospi_foreign_net_recent": krx_flows.kospi_foreign_net[-5:] if krx_flows else [],
             "kospi_inst_net_recent": krx_flows.kospi_inst_net[-5:] if krx_flows else [],
         } if krx_flows and getattr(krx_flows, "available", False) else None,
+        "eps_revisions": [
+            {
+                "name": e.name, "trailing": e.trailing_eps, "forward": e.forward_eps,
+                "growth_pct": e.growth_pct, "direction": e.direction,
+                "target_price": e.target_price,
+            } for e in (eps_revisions or [])
+        ],
+        "cot_sp500": {
+            "report_date": cot.report_date, "mm_net": cot.sp500_mm_net,
+            "mm_net_chg_1w": cot.sp500_mm_net_chg_1w,
+            "interpretation": cot.interpretation,
+        } if cot and cot.sp500_mm_net is not None else None,
+        "etf_flows": [
+            {
+                "ticker": f.ticker, "name": f.name,
+                "volume_trend": f.volume_trend, "interpretation": f.interpretation,
+            } for f in (etf_flows or []) if f.volume_trend is not None
+        ],
     }
 
 
@@ -342,7 +363,8 @@ facts = {facts_json}
      · 통화정책: fred_indicators(기준금리, TIPS 기대인플레, PCE Core, Fed 대차대조표, M2)
      · 신용·유동성: 하이일드 스프레드, 수익률곡선
      · 시장 심리: VIX, put_call_ratio, aaii_sentiment
-     · 자금 흐름: krx_flows_recent (외국인·기관)
+     · 자금 흐름: krx_flows_recent (외국인·기관), etf_flows (SPY·QQQ·TLT·GLD 등 거래량 추세), cot_sp500 (헤지펀드 포지션)
+     · 펀더멘털: eps_revisions (forward vs trailing EPS — upward/downward revision)
      · 시장 폭: market_breadth (US/KR)
      · 엔캐리: yen_carry_risk (글로벌 위험자산 청산 위험)
      · 경기: 비농업·실업·ISM PMI, 일본 CPI/금리
@@ -415,6 +437,9 @@ def generate_summaries(
     put_call: Any = None,
     aaii: Any = None,
     krx_flows: Any = None,
+    eps_revisions: list = None,
+    cot: Any = None,
+    etf_flows: list = None,
 ) -> SectionSummaries:
     """Gemini로 4개 섹션 × 3단계 요약 + 리스크 평가 + 시장 전망 생성."""
     if not GEMINI_API_KEY:
@@ -425,6 +450,7 @@ def generate_summaries(
         risk, benchmarks, macro, holdings_with_chg,
         yen_carry=yen_carry, market_breadth=market_breadth,
         put_call=put_call, aaii=aaii, krx_flows=krx_flows,
+        eps_revisions=eps_revisions, cot=cot, etf_flows=etf_flows,
     )
     user_prompt = PROMPT_USER_TEMPLATE.format(
         facts_json=json.dumps(facts, ensure_ascii=False, default=str),

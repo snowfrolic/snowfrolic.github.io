@@ -24,6 +24,8 @@ from collectors.calendar import fetch_upcoming_events
 from collectors.fx import fetch_fx
 from collectors.kis_api import fetch_market_investor_flows_kis, fetch_vwap_kis
 from collectors.krx_flows import fetch_market_flows
+from collectors.cot_flows import fetch_cot_sp500, fetch_etf_flows
+from collectors.eps_revision import fetch_eps_revisions
 from collectors.market_breadth import compute_market_breadth
 from collectors.sentiment import fetch_aaii_sentiment, fetch_put_call_ratio
 from collectors.yen_carry import compute_yen_carry_risk
@@ -264,6 +266,18 @@ def run() -> int:
         f"시장 폭 US {market_breadth.us_breadth_chg_20d}"
     )
 
+    # v3.1 신규 — EPS revision + COT + ETF flow
+    log.info("EPS revision + COT + ETF flow 수집...")
+    eps_tickers = [(h["ticker"], h["name"], h["market"]) for h in holdings_value]
+    eps_revisions = fetch_eps_revisions(eps_tickers)
+    cot = fetch_cot_sp500()
+    etf_flows = fetch_etf_flows()
+    log.info(
+        f"  EPS revisions: {len(eps_revisions)}건 · "
+        f"COT S&P500 net: {cot.sp500_mm_net} ({cot.interpretation}) · "
+        f"ETF flows: {len(etf_flows)}건"
+    )
+
     log.info("뉴스 수집...")
     news_keywords = ["코스피", "FOMC"] + [h.name for h in risk.holdings[:3]]
     news = fetch_news_for_keywords(news_keywords, per_kw=2)
@@ -277,6 +291,7 @@ def run() -> int:
         risk, benchmarks, macro, holdings_value,
         yen_carry=yen_carry, market_breadth=market_breadth,
         put_call=put_call, aaii=aaii, krx_flows=krx,
+        eps_revisions=eps_revisions, cot=cot, etf_flows=etf_flows,
     )
 
     log.info("사이트 빌드...")
