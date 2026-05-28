@@ -52,6 +52,46 @@
     padding: 12px 14px; border-radius: 6px; margin-bottom: 12px; font-size: 14px; }
   .warn.critical { background: rgba(239,68,68,0.12); border-color: var(--critical); }
 
+  /* DASHBOARD (통합 대시보드) */
+  .dashboard-summary { background: linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(15,23,42,0.6) 100%);
+    border: 1px solid rgba(96,165,250,0.5); border-radius: 12px; padding: 18px 22px;
+    margin-bottom: 14px; font-size: 14px; line-height: 1.7; color: var(--text); }
+  .dashboard-summary .tag { font-style: normal; font-weight: 700; color: var(--accent);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px;
+    display: block; margin-bottom: 8px; }
+  .tf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+  @media (max-width: 900px) { .tf-grid { grid-template-columns: 1fr; } }
+  .tf-card { background: var(--panel); border-radius: 10px; padding: 14px; }
+  .tf-card .tf-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .tf-card .tf-icon { font-size: 18px; }
+  .tf-card .tf-label { font-weight: 700; font-size: 13px; }
+  .tf-card .tf-block { margin-top: 10px; }
+  .tf-card .tf-block-label { font-size: 10px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 3px; }
+  .tf-card .tf-block-text { font-size: 13px; line-height: 1.5; }
+  .tf-card .tf-action { color: #86efac; font-weight: 600; }
+  .tf-card .tf-rationale { color: var(--muted); font-size: 12px; font-style: italic; }
+
+  /* KEY INDICATORS */
+  .ki-card { background: var(--panel); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .ki-card h3 { margin: 0 0 10px; font-size: 13px; color: var(--accent); border-left: 3px solid var(--accent); padding-left: 10px; }
+  .ki-card table { font-size: 12.5px; width: 100%; }
+  .ki-card td { padding: 5px 8px; border-bottom: 1px solid var(--panel2); }
+  .ki-cat { color: var(--muted); width: 80px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .ki-name { font-weight: 500; }
+  .ki-val { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .ki-signal { width: 24px; text-align: center; font-weight: 700; font-size: 14px; }
+  .ki-note { color: var(--muted); font-size: 11.5px; font-style: italic; }
+
+  /* DETAIL SECTION (펼치기) */
+  .detail-toggle { background: var(--panel); border-radius: 8px; padding: 12px 16px;
+    cursor: pointer; user-select: none; margin: 18px 0 6px; border: 1px solid var(--panel2); }
+  .detail-toggle:hover { background: var(--panel2); }
+  .detail-toggle summary { font-size: 13px; font-weight: 600; color: var(--accent); list-style: none; outline: none; }
+  .detail-toggle summary::-webkit-details-marker { display: none; }
+  .detail-toggle summary::after { content: " ▼"; font-size: 10px; color: var(--muted); }
+  .detail-toggle[open] summary::after { content: " ▲"; }
+
   /* SUMMARY (AI 요약 — 3단계 인사이트 박스) */
   .summary { background: rgba(96,165,250,0.07); border-left: 3px solid var(--accent);
     padding: 12px 16px; border-radius: 6px; margin: 0 0 14px; font-size: 13.5px;
@@ -158,7 +198,74 @@
       {%- endif %}
     {%- endmacro %}
 
-    {% if summaries %}{{ render_summary(summaries.overall, 'overall', '오늘의 시장 총평 (AI)') }}{% endif %}
+    {# ━━━━━━━━━━━━━━ 통합 대시보드 (NEW) ━━━━━━━━━━━━━━ #}
+    {% if summaries and summaries.dashboard and not summaries.dashboard.is_empty %}
+    {% set db = summaries.dashboard %}
+
+    {% if db.executive_summary %}
+    <div class="dashboard-summary">
+      <span class="tag">📋 핵심 요약 (AI)</span>
+      {{ db.executive_summary }}
+    </div>
+    {% endif %}
+
+    {% if not db.short.is_empty or not db.mid.is_empty or not db.long.is_empty %}
+    <div class="tf-grid">
+      {% for tf, label, icon in [(db.short, '단기 (1~2주)', '⚡'), (db.mid, '중기 (1~3개월)', '📊'), (db.long, '장기 (3~12개월)', '🔭')] %}
+      {% if not tf.is_empty %}
+      <div class="tf-card">
+        <div class="tf-header">
+          <span class="tf-icon">{{ icon }}</span>
+          <span class="tf-label">{{ label }}</span>
+          {% if tf.direction %}
+          <span class="chip chip-sm" style="background:
+            {{ '#22c55e' if '강세' in tf.direction and '약세' not in tf.direction else
+               '#ef4444' if '약세' in tf.direction and '강세' not in tf.direction else
+               '#f59e0b' }};">{{ tf.direction }}</span>
+          {% endif %}
+        </div>
+        {% if tf.market_view %}
+        <div class="tf-block">
+          <div class="tf-block-label">📈 시장</div>
+          <div class="tf-block-text">{{ tf.market_view }}</div>
+        </div>
+        {% endif %}
+        {% if tf.portfolio_action %}
+        <div class="tf-block">
+          <div class="tf-block-label">💼 포트 액션</div>
+          <div class="tf-block-text tf-action">{{ tf.portfolio_action }}</div>
+        </div>
+        {% endif %}
+        {% if tf.rationale %}
+        <div class="tf-block">
+          <div class="tf-block-label">근거</div>
+          <div class="tf-block-text tf-rationale">{{ tf.rationale }}</div>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if db.key_indicators %}
+    <div class="ki-card">
+      <h3>🔑 주요 지표 변화</h3>
+      <table>
+        {% for k in db.key_indicators %}
+        <tr>
+          <td class="ki-cat">{{ k.category }}</td>
+          <td class="ki-name">{{ k.name }}</td>
+          <td class="ki-val">{{ k.value }}</td>
+          <td class="ki-signal" style="color: {{ '#4ade80' if k.signal in ('↑','✓') else '#f87171' if k.signal in ('↓','⚠') else 'var(--muted)' }};">{{ k.signal }}</td>
+          <td class="ki-note">{{ k.note }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+    {% endif %}
+
+    {% endif %}{# end dashboard #}
 
     {% if risk.short_term_warning %}
     <div class="warn"><b>⚠️ 단기 경고</b> · {{ risk.short_term_warning }}</div>
@@ -207,6 +314,11 @@
     {% endif %}
 
     <!-- MARKET OUTLOOK (시장 전망 — 보유 포트 독립) -->
+    <!-- ━━━━━━━━━━ 상세 영역 (펼치기) ━━━━━━━━━━ -->
+    <details class="detail-toggle">
+      <summary>▶ 상세 인사이트 · 보유 종목 · 시장 데이터 · 뉴스</summary>
+    </details>
+
     {% if summaries and summaries.market_outlook and not summaries.market_outlook.is_empty %}
     <div class="card" style="border: 1px solid #60a5fa; border-radius: 12px;">
       <h2 style="border-left-color: #3b82f6;">🌐 시장 전망 (Market Outlook)</h2>

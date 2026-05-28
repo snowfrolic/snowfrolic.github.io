@@ -96,6 +96,43 @@ class MarketOutlook:
 
 
 @dataclass
+class DashboardTimeframe:
+    """대시보드용 시계별 통합 — 시장 + 포트 + 근거."""
+    direction: str = ""           # "강세" / "중립~강세" / "중립" / "중립~약세" / "약세"
+    market_view: str = ""         # 1-2문장 — 시장 단기 현황 + 주요 지표 인용
+    portfolio_action: str = ""    # 1문장 — 종목명 포함 → 액션
+    rationale: str = ""           # 근거 지표 2-3개 (수치 포함)
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.market_view or self.portfolio_action)
+
+
+@dataclass
+class KeyIndicator:
+    """주요 지표 한 줄."""
+    category: str = ""   # "통화정책" / "심리" / "자금" / "곡선" / "엔캐리" / "환율"
+    name: str = ""
+    value: str = ""      # 값 + 단위
+    signal: str = ""     # "↑" / "↓" / "→" / "✓"
+    note: str = ""       # 짧은 해석 (10자 이내)
+
+
+@dataclass
+class ExecutiveDashboard:
+    """통합 대시보드 — 한눈 표시용."""
+    executive_summary: str = ""    # 3-4줄 종합 (시장+포트+핵심)
+    short: DashboardTimeframe = field(default_factory=DashboardTimeframe)
+    mid: DashboardTimeframe = field(default_factory=DashboardTimeframe)
+    long: DashboardTimeframe = field(default_factory=DashboardTimeframe)
+    key_indicators: list[KeyIndicator] = field(default_factory=list)
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.executive_summary and self.short.is_empty and not self.key_indicators
+
+
+@dataclass
 class SectionSummaries:
     overall: SectionDetail = field(default_factory=SectionDetail)
     benchmarks: SectionDetail = field(default_factory=SectionDetail)
@@ -103,6 +140,7 @@ class SectionSummaries:
     holdings: SectionDetail = field(default_factory=SectionDetail)
     risk_assessment: RiskAssessment = field(default_factory=RiskAssessment)
     market_outlook: MarketOutlook = field(default_factory=MarketOutlook)
+    dashboard: ExecutiveDashboard = field(default_factory=ExecutiveDashboard)
 
     def is_empty(self) -> bool:
         return all(s.is_empty for s in (self.overall, self.benchmarks, self.macro, self.holdings))
@@ -340,7 +378,30 @@ facts = {facts_json}
 ▶ holdings — 보유 종목 리스크 (3단계 합 200자 내외)
    top_holdings의 기술적 상태 + 비중·점수 패턴 + 보유 전략 시사점.
 
-▶ risk_assessment — 포트폴리오 리스크 종합 평가 ⭐ 가장 실용적인 섹션
+▶ dashboard — ⭐⭐⭐ 통합 대시보드 (최상단 한눈 표시용 — 가장 중요)
+   사이트 최상단에 시장+포트+핵심 한눈 표시. 모든 지표를 가장 압축해 인사이트화.
+
+   {{ "executive_summary": "..." }} — 3-4줄.
+     첫 줄: 시장 현황 (주요 지표 2-3개 인용)
+     둘째 줄: 보유 포트 영향 (구체 종목 1-2개)
+     셋째 줄: 단기/중기/장기 핵심 한 줄씩 (또는 가장 중요한 1가지)
+
+   {{ "short" / "mid" / "long" }} — 단/중/장기 각각:
+     direction: "강세"/"중립~강세"/"중립"/"중립~약세"/"약세"
+     market_view: 1-2문장. 해당 시계의 시장 방향성 (지표 1-2개 수치 인용)
+     portfolio_action: 1문장. "→ {{구체 종목}} {{액션}}" 형태
+     rationale: 1문장. 근거 지표 2-3개 나열 (예: "VIX 16↓·Put/Call 1.23↑·외국인 -342만주")
+
+   {{ "key_indicators" }} — 8-12개 핵심 지표 배열. 각 항목:
+     category: "통화정책"/"심리"/"자금"/"곡선"/"엔캐리"/"환율"/"인플레"
+     name: 지표명 (짧게)
+     value: 값+단위 (예: "3.64%", "16.4", "-342만주")
+     signal: "↑"/"↓"/"→"/"✓"/"⚠"
+     note: 10자 이내 해석 (예: "비둘기 기조", "단기 과열")
+
+   선정 우선순위: Fed금리·한은금리·TIPS·VIX·Put/Call·외국인수급·10Y-3M·엔캐리·USD/KRW 등 시계별 결정적 지표.
+
+▶ risk_assessment — (기존 유지, 호환성) 포트폴리오 리스크 종합 평가
    모든 지표(매크로·기술적·수급 구조·보유 구성)를 종합 판단해서 단기/중기/장기별 리스크 의견.
 
    데이터 참고: portfolio_avg_short_score(단기 {portfolio_avg_short_score}점),
@@ -385,6 +446,16 @@ facts = {facts_json}
 
 출력 JSON 스키마 (정확히 이 구조):
 {{
+  "dashboard": {{
+    "executive_summary": "...",
+    "short": {{"direction": "...", "market_view": "...", "portfolio_action": "...", "rationale": "..."}},
+    "mid":   {{"direction": "...", "market_view": "...", "portfolio_action": "...", "rationale": "..."}},
+    "long":  {{"direction": "...", "market_view": "...", "portfolio_action": "...", "rationale": "..."}},
+    "key_indicators": [
+      {{"category": "...", "name": "...", "value": "...", "signal": "...", "note": "..."}},
+      ...
+    ]
+  }},
   "overall":    {{"observe": "...", "interpret": "...", "implication": "..."}},
   "benchmarks": {{"observe": "...", "interpret": "...", "implication": "..."}},
   "macro":      {{"observe": "...", "interpret": "...", "implication": "..."}},
@@ -581,6 +652,32 @@ def generate_summaries(
                 expected=str(tf_data.get("expected", "")).strip(),
             ))
 
+    # dashboard 파싱 (NEW - 통합 대시보드)
+    db_raw = parsed.get("dashboard", {})
+    db = ExecutiveDashboard()
+    if isinstance(db_raw, dict):
+        db.executive_summary = str(db_raw.get("executive_summary", "")).strip()
+        for tf_key in ("short", "mid", "long"):
+            tf_data = db_raw.get(tf_key, {})
+            if isinstance(tf_data, dict):
+                setattr(db, tf_key, DashboardTimeframe(
+                    direction=str(tf_data.get("direction", "")).strip(),
+                    market_view=str(tf_data.get("market_view", "")).strip(),
+                    portfolio_action=str(tf_data.get("portfolio_action", "")).strip(),
+                    rationale=str(tf_data.get("rationale", "")).strip(),
+                ))
+        ki_raw = db_raw.get("key_indicators", [])
+        if isinstance(ki_raw, list):
+            db.key_indicators = [
+                KeyIndicator(
+                    category=str(k.get("category", "")).strip(),
+                    name=str(k.get("name", "")).strip(),
+                    value=str(k.get("value", "")).strip(),
+                    signal=str(k.get("signal", "")).strip(),
+                    note=str(k.get("note", "")).strip(),
+                ) for k in ki_raw if isinstance(k, dict)
+            ]
+
     summaries = SectionSummaries(
         overall=_extract_detail(parsed.get("overall")),
         benchmarks=_extract_detail(parsed.get("benchmarks")),
@@ -588,9 +685,11 @@ def generate_summaries(
         holdings=_extract_detail(parsed.get("holdings")),
         risk_assessment=ra,
         market_outlook=mo,
+        dashboard=db,
     )
     log.info(
         "Gemini 요약 생성 완료: "
+        f"dashboard={'OK' if not db.is_empty else 'empty'} (exec={len(db.executive_summary)}자, ki={len(db.key_indicators)}개), "
         f"overall={summaries.overall.total_len}자, benchmarks={summaries.benchmarks.total_len}자, "
         f"macro={summaries.macro.total_len}자, holdings={summaries.holdings.total_len}자, "
         f"risk_assessment={'OK' if not ra.is_empty else 'empty'}, "
