@@ -66,13 +66,26 @@ def fetch_yield_curve() -> YieldCurve:
 
 
 FRED_SERIES = {
+    # 통화정책
     "FEDFUNDS": "미국 기준금리(%)",
+    "DGS2": "미국채 2Y(%)",
+    "T10Y2Y": "미국 10Y-2Y 스프레드(%)",
+    # 인플레이션
     "CPIAUCSL": "미국 CPI",
+    "PCEPILFE": "미국 PCE Core(YoY 환산 필요)",
+    "T5YIE": "미국 5Y 기대인플레(%)",
+    "T10YIE": "미국 10Y 기대인플레(%)",
+    # 고용·경기
     "UNRATE": "미국 실업률(%)",
     "PAYEMS": "비농업 고용자수(천명)",
-    "T10Y2Y": "미국 10Y-2Y 스프레드(%)",
-    "DGS2": "미국채 2Y(%)",
+    "NAPM": "미국 ISM 제조업 PMI",
+    # 신용·유동성
     "BAMLH0A0HYM2": "미국 하이일드 스프레드(%)",
+    "WALCL": "Fed 대차대조표(백만달러)",
+    "M2SL": "미국 M2 통화량(십억달러)",
+    # 일본 (월별)
+    "IRLTLT01JPM156N": "일본 10Y 국채(%, 월별)",
+    "JPNCPIALLMINMEI": "일본 CPI(월별)",
 }
 
 

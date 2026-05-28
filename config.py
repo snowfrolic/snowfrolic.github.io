@@ -50,16 +50,20 @@ BENCHMARKS = {
     "DOW": "^DJI",
     "닛케이225": "^N225",
     "상해종합": "000001.SS",
+    # 시장 폭 계산용 — S&P500 동일가중 (RSP) vs 시총가중 (SPY)
+    "S&P500 동일가중": "RSP",
 }
 
 MACRO_TICKERS = {
     "미국채10Y": "^TNX",
-    "미국채2Y": "^IRX",   # 13주 단기금리 (대체 지표)
+    "미국채2Y": "^IRX",
     "미국채30Y": "^TYX",
     "VIX": "^VIX",
     "DXY 달러인덱스": "DX-Y.NYB",
     "WTI 원유": "CL=F",
     "금": "GC=F",
+    "구리": "HG=F",
+    "Fed Funds Futures": "ZQ=F",
 }
 
 FX_TICKERS = {

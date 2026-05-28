@@ -72,12 +72,37 @@ class RiskAssessment:
 
 
 @dataclass
+class MarketOutlookTimeframe:
+    """시장 전망 — 단기/중기/장기별."""
+    direction: str = ""      # "강세" / "중립~강세" / "중립" / "중립~약세" / "약세"
+    assessment: str = ""     # 근거 (3-4문장, 핵심 지표 인용)
+    expected: str = ""       # 예상 변동 폭 (예: "S&P500 +3~5%")
+
+    @property
+    def is_empty(self) -> bool:
+        return not (self.assessment or self.expected)
+
+
+@dataclass
+class MarketOutlook:
+    """시장 자체 전망 — 보유 포트와 독립적인 시장 방향성."""
+    short_term: MarketOutlookTimeframe = field(default_factory=MarketOutlookTimeframe)
+    mid_term: MarketOutlookTimeframe = field(default_factory=MarketOutlookTimeframe)
+    long_term: MarketOutlookTimeframe = field(default_factory=MarketOutlookTimeframe)
+
+    @property
+    def is_empty(self) -> bool:
+        return self.short_term.is_empty and self.mid_term.is_empty and self.long_term.is_empty
+
+
+@dataclass
 class SectionSummaries:
     overall: SectionDetail = field(default_factory=SectionDetail)
     benchmarks: SectionDetail = field(default_factory=SectionDetail)
     macro: SectionDetail = field(default_factory=SectionDetail)
     holdings: SectionDetail = field(default_factory=SectionDetail)
     risk_assessment: RiskAssessment = field(default_factory=RiskAssessment)
+    market_outlook: MarketOutlook = field(default_factory=MarketOutlook)
 
     def is_empty(self) -> bool:
         return all(s.is_empty for s in (self.overall, self.benchmarks, self.macro, self.holdings))
@@ -122,6 +147,11 @@ def _make_facts(
     benchmarks: dict,
     macro: Any,
     holdings_with_chg: list[dict],
+    yen_carry: Any = None,
+    market_breadth: Any = None,
+    put_call: Any = None,
+    aaii: Any = None,
+    krx_flows: Any = None,
 ) -> dict:
     """모델에 전달할 사실 데이터. FRED 거시지표 포함."""
     bench = {name: _series_stats(s) for name, s in benchmarks.items()}
@@ -208,6 +238,30 @@ def _make_facts(
         "portfolio_avg_long_score": round(
             sum(h.long_score * h.weight_pct for h in risk.holdings) / 100, 1
         ) if risk.holdings else 50,
+        # v3 신규 — 시장 전망용 지표
+        "yen_carry_risk": {
+            "score": yen_carry.score, "level": yen_carry.level,
+            "breakdown": yen_carry.breakdown,
+        } if yen_carry else None,
+        "market_breadth": {
+            "us_chg_20d_pct": market_breadth.us_breadth_chg_20d,
+            "us_interpretation": market_breadth.us_interpretation,
+            "kr_chg_20d_pct": market_breadth.kr_breadth_chg_20d,
+            "kr_interpretation": market_breadth.kr_interpretation,
+            "portfolio_near_52w_high_pct": market_breadth.portfolio_breadth_pct,
+        } if market_breadth else None,
+        "put_call_ratio": {
+            "total": put_call.total_pc, "interpretation": put_call.interpretation,
+        } if put_call and put_call.total_pc else None,
+        "aaii_sentiment": {
+            "bullish_pct": aaii.bullish_pct, "bearish_pct": aaii.bearish_pct,
+            "bull_bear_spread": aaii.bull_bear_spread, "interpretation": aaii.interpretation,
+        } if aaii and aaii.bullish_pct else None,
+        "krx_flows_recent": {
+            "dates": krx_flows.dates[-5:] if krx_flows and krx_flows.dates else [],
+            "kospi_foreign_net_recent": krx_flows.kospi_foreign_net[-5:] if krx_flows else [],
+            "kospi_inst_net_recent": krx_flows.kospi_inst_net[-5:] if krx_flows else [],
+        } if krx_flows and getattr(krx_flows, "available", False) else None,
     }
 
 
@@ -282,6 +336,23 @@ facts = {facts_json}
    - action: 종목명을 포함한 구체적 행동 의견 (1-2문장). "→" 로 시작.
      예: "→ 삼성전자·SK하이닉스 급등 시 일부 차익 실현, TIGER회사채 비중 축소 검토"
 
+▶ market_outlook — 시장 자체 전망 (보유 포트와 독립) ⭐⭐ 사용자 핵심 요청
+   "시장이 단기/중기/장기에 어떻게 갈 것인가"를 종합 데이터로 예측.
+   facts의 모든 지표를 활용:
+     · 통화정책: fred_indicators(기준금리, TIPS 기대인플레, PCE Core, Fed 대차대조표, M2)
+     · 신용·유동성: 하이일드 스프레드, 수익률곡선
+     · 시장 심리: VIX, put_call_ratio, aaii_sentiment
+     · 자금 흐름: krx_flows_recent (외국인·기관)
+     · 시장 폭: market_breadth (US/KR)
+     · 엔캐리: yen_carry_risk (글로벌 위험자산 청산 위험)
+     · 경기: 비농업·실업·ISM PMI, 일본 CPI/금리
+
+   각 시계(short_term/mid_term/long_term)마다:
+   - direction: "강세" / "중립~강세" / "중립" / "중립~약세" / "약세"
+   - assessment: 3-4문장. 위 지표 중 최소 4-5개를 구체적 수치와 함께 인용해 종합 진단.
+     예: "VIX 18.2 안정, Put/Call 0.95 중립, 시장 폭(RSP/SPY) +1.2% 확장 중. Fed Funds Futures가 9월 -25bp 인하 70% 반영. 다만 RSI 70 과열·52주 +97% 위치로 단기 조정 가능성."
+   - expected: 구체적 변동 폭 예상. 예: "S&P500 박스권 +0~3%", "KOSPI +3~5% 완만한 상승", "변동성 확대, -5% 조정 가능".</li>
+
 출력 JSON 스키마 (정확히 이 구조):
 {{
   "overall":    {{"observe": "...", "interpret": "...", "implication": "..."}},
@@ -292,6 +363,11 @@ facts = {facts_json}
     "short_term": {{"risk_level": "...", "assessment": "...", "action": "..."}},
     "mid_term":   {{"risk_level": "...", "assessment": "...", "action": "..."}},
     "long_term":  {{"risk_level": "...", "assessment": "...", "action": "..."}}
+  }},
+  "market_outlook": {{
+    "short_term": {{"direction": "...", "assessment": "...", "expected": "..."}},
+    "mid_term":   {{"direction": "...", "assessment": "...", "expected": "..."}},
+    "long_term":  {{"direction": "...", "assessment": "...", "expected": "..."}}
   }}
 }}
 """
@@ -334,15 +410,24 @@ def generate_summaries(
     benchmarks: dict,
     macro: Any,
     holdings_with_chg: list[dict],
+    yen_carry: Any = None,
+    market_breadth: Any = None,
+    put_call: Any = None,
+    aaii: Any = None,
+    krx_flows: Any = None,
 ) -> SectionSummaries:
-    """Gemini로 4개 섹션 × 3단계 요약 생성."""
+    """Gemini로 4개 섹션 × 3단계 요약 + 리스크 평가 + 시장 전망 생성."""
     if not GEMINI_API_KEY:
         log.info("GEMINI_API_KEY 미설정 — 섹션 요약 스킵")
         return SectionSummaries()
 
-    facts = _make_facts(risk, benchmarks, macro, holdings_with_chg)
+    facts = _make_facts(
+        risk, benchmarks, macro, holdings_with_chg,
+        yen_carry=yen_carry, market_breadth=market_breadth,
+        put_call=put_call, aaii=aaii, krx_flows=krx_flows,
+    )
     user_prompt = PROMPT_USER_TEMPLATE.format(
-        facts_json=json.dumps(facts, ensure_ascii=False),
+        facts_json=json.dumps(facts, ensure_ascii=False, default=str),
         portfolio_avg_short_score=facts.get("portfolio_avg_short_score", 50),
         portfolio_avg_mid_score=facts.get("portfolio_avg_mid_score", 50),
         portfolio_avg_long_score=facts.get("portfolio_avg_long_score", 50),
@@ -448,18 +533,32 @@ def generate_summaries(
                 action=str(tf_data.get("action", "")).strip(),
             ))
 
+    # market_outlook 파싱
+    mo_raw = parsed.get("market_outlook", {})
+    mo = MarketOutlook()
+    for tf_key in ("short_term", "mid_term", "long_term"):
+        tf_data = mo_raw.get(tf_key, {})
+        if isinstance(tf_data, dict):
+            setattr(mo, tf_key, MarketOutlookTimeframe(
+                direction=str(tf_data.get("direction", "")).strip(),
+                assessment=str(tf_data.get("assessment", "")).strip(),
+                expected=str(tf_data.get("expected", "")).strip(),
+            ))
+
     summaries = SectionSummaries(
         overall=_extract_detail(parsed.get("overall")),
         benchmarks=_extract_detail(parsed.get("benchmarks")),
         macro=_extract_detail(parsed.get("macro")),
         holdings=_extract_detail(parsed.get("holdings")),
         risk_assessment=ra,
+        market_outlook=mo,
     )
     log.info(
         "Gemini 요약 생성 완료: "
         f"overall={summaries.overall.total_len}자, benchmarks={summaries.benchmarks.total_len}자, "
         f"macro={summaries.macro.total_len}자, holdings={summaries.holdings.total_len}자, "
-        f"risk_assessment={'OK' if not ra.is_empty else 'empty'}"
+        f"risk_assessment={'OK' if not ra.is_empty else 'empty'}, "
+        f"market_outlook={'OK' if not mo.is_empty else 'empty'}"
     )
     # 디버그: 평문 로그
     for name, s in [("OVERALL", summaries.overall), ("BENCHMARKS", summaries.benchmarks),
@@ -468,5 +567,8 @@ def generate_summaries(
     if not ra.is_empty:
         for tf_name, tf in [("단기", ra.short_term), ("중기", ra.mid_term), ("장기", ra.long_term)]:
             log.info(f"--- RISK {tf_name} [{tf.risk_level}] ---\n{tf.assessment}\n→ {tf.action}")
+    if not mo.is_empty:
+        for tf_name, tf in [("단기", mo.short_term), ("중기", mo.mid_term), ("장기", mo.long_term)]:
+            log.info(f"--- MARKET {tf_name} [{tf.direction}] ---\n{tf.assessment}\n예상: {tf.expected}")
 
     return summaries

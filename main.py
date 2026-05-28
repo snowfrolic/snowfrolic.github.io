@@ -24,6 +24,9 @@ from collectors.calendar import fetch_upcoming_events
 from collectors.fx import fetch_fx
 from collectors.kis_api import fetch_market_investor_flows_kis, fetch_vwap_kis
 from collectors.krx_flows import fetch_market_flows
+from collectors.market_breadth import compute_market_breadth
+from collectors.sentiment import fetch_aaii_sentiment, fetch_put_call_ratio
+from collectors.yen_carry import compute_yen_carry_risk
 from collectors.macro import fetch_macro_snapshot
 from collectors.news_sentiment import enrich_news_with_price, fetch_news_for_keywords
 from collectors.non_tradeable_pricer import price_non_tradeable
@@ -245,6 +248,22 @@ def run() -> int:
     events = fetch_upcoming_events(days_ahead=14)
     log.info(f"  이벤트 {len(events)}건")
 
+    # v3 신규 — 시장 전망용 보조 지표
+    log.info("시장 심리·구조 지표 수집 (Put/Call, AAII, 엔캐리, 시장 폭)...")
+    put_call = fetch_put_call_ratio()
+    aaii = fetch_aaii_sentiment()
+    yen_carry = compute_yen_carry_risk(
+        fx_indicators=fx, macro_indicators=macro.indicators,
+        benchmarks=benchmarks, fred_data=macro.fred,
+    )
+    market_breadth = compute_market_breadth(benchmarks, holdings_risk)
+    log.info(
+        f"  Put/Call: {put_call.total_pc} ({put_call.interpretation or '데이터 없음'}) · "
+        f"AAII spread: {aaii.bull_bear_spread} · "
+        f"엔캐리 {yen_carry.score}/100 ({yen_carry.level}) · "
+        f"시장 폭 US {market_breadth.us_breadth_chg_20d}"
+    )
+
     log.info("뉴스 수집...")
     news_keywords = ["코스피", "FOMC"] + [h.name for h in risk.holdings[:3]]
     news = fetch_news_for_keywords(news_keywords, per_kw=2)
@@ -254,7 +273,11 @@ def run() -> int:
     log.info(f"  헤드라인 {len(news)}건, 가격반응 매칭 {sum(1 for n in news if n.matched_ticker)}건")
 
     log.info(f"Gemini 섹션 요약 생성 (키 설정: {bool(GEMINI_API_KEY)})...")
-    summaries = generate_summaries(risk, benchmarks, macro, holdings_value)
+    summaries = generate_summaries(
+        risk, benchmarks, macro, holdings_value,
+        yen_carry=yen_carry, market_breadth=market_breadth,
+        put_call=put_call, aaii=aaii, krx_flows=krx,
+    )
 
     log.info("사이트 빌드...")
     dist = build_site(
