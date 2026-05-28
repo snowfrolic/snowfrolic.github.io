@@ -155,6 +155,7 @@ def _make_facts(
     eps_revisions: list = None,
     cot: Any = None,
     etf_flows: list = None,
+    korea_macro: Any = None,
 ) -> dict:
     """모델에 전달할 사실 데이터. FRED 거시지표 포함."""
     bench = {name: _series_stats(s) for name, s in benchmarks.items()}
@@ -283,6 +284,13 @@ def _make_facts(
                 "volume_trend": f.volume_trend, "interpretation": f.interpretation,
             } for f in (etf_flows or []) if f.volume_trend is not None
         ],
+        "korea_macro": {
+            "base_rate_pct": korea_macro.base_rate_pct,
+            "kgb_3y_pct": korea_macro.kgb_3y_pct,
+            "kgb_10y_pct": korea_macro.kgb_10y_pct,
+            "cpi_yoy_pct": korea_macro.cpi_yoy_pct,
+            "core_cpi_yoy_pct": korea_macro.core_cpi_yoy_pct,
+        } if korea_macro and korea_macro.base_rate_pct is not None else None,
     }
 
 
@@ -360,7 +368,7 @@ facts = {facts_json}
 ▶ market_outlook — 시장 자체 전망 (보유 포트와 독립) ⭐⭐ 사용자 핵심 요청
    "시장이 단기/중기/장기에 어떻게 갈 것인가"를 종합 데이터로 예측.
    facts의 모든 지표를 활용:
-     · 통화정책: fred_indicators(기준금리, TIPS 기대인플레, PCE Core, Fed 대차대조표, M2)
+     · 통화정책: fred_indicators(미국 기준금리, TIPS 기대인플레, PCE Core, Fed 대차대조표, M2), korea_macro(한은 기준금리, 국고채 3Y/10Y, 한국 CPI YoY)
      · 신용·유동성: 하이일드 스프레드, 수익률곡선
      · 시장 심리: VIX, put_call_ratio, aaii_sentiment
      · 자금 흐름: krx_flows_recent (외국인·기관), etf_flows (SPY·QQQ·TLT·GLD 등 거래량 추세), cot_sp500 (헤지펀드 포지션)
@@ -440,6 +448,7 @@ def generate_summaries(
     eps_revisions: list = None,
     cot: Any = None,
     etf_flows: list = None,
+    korea_macro: Any = None,
 ) -> SectionSummaries:
     """Gemini로 4개 섹션 × 3단계 요약 + 리스크 평가 + 시장 전망 생성."""
     if not GEMINI_API_KEY:
@@ -451,6 +460,7 @@ def generate_summaries(
         yen_carry=yen_carry, market_breadth=market_breadth,
         put_call=put_call, aaii=aaii, krx_flows=krx_flows,
         eps_revisions=eps_revisions, cot=cot, etf_flows=etf_flows,
+        korea_macro=korea_macro,
     )
     user_prompt = PROMPT_USER_TEMPLATE.format(
         facts_json=json.dumps(facts, ensure_ascii=False, default=str),

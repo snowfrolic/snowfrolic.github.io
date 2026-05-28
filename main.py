@@ -25,6 +25,7 @@ from collectors.fx import fetch_fx
 from collectors.kis_api import fetch_market_investor_flows_kis, fetch_vwap_kis
 from collectors.krx_flows import fetch_market_flows
 from collectors.cot_flows import fetch_cot_sp500, fetch_etf_flows
+from collectors.ecos import fetch_korea_macro
 from collectors.eps_revision import fetch_eps_revisions
 from collectors.market_breadth import compute_market_breadth
 from collectors.sentiment import fetch_aaii_sentiment, fetch_put_call_ratio
@@ -278,6 +279,9 @@ def run() -> int:
         f"ETF flows: {len(etf_flows)}건"
     )
 
+    # 한국 거시 (ECOS)
+    korea_macro = fetch_korea_macro()
+
     log.info("뉴스 수집...")
     news_keywords = ["코스피", "FOMC"] + [h.name for h in risk.holdings[:3]]
     news = fetch_news_for_keywords(news_keywords, per_kw=2)
@@ -292,6 +296,7 @@ def run() -> int:
         yen_carry=yen_carry, market_breadth=market_breadth,
         put_call=put_call, aaii=aaii, krx_flows=krx,
         eps_revisions=eps_revisions, cot=cot, etf_flows=etf_flows,
+        korea_macro=korea_macro,
     )
 
     log.info("사이트 빌드...")

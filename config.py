@@ -32,6 +32,9 @@ KIS_APP_KEY = os.getenv("KIS_APP_KEY", "")
 KIS_APP_SECRET = os.getenv("KIS_APP_SECRET", "")
 KIS_ACCOUNT_NO = os.getenv("KIS_ACCOUNT_NO", "")
 
+# 한국은행 ECOS API (한국 거시지표)
+ECOS_API_KEY = os.getenv("ECOS_API_KEY", "")
+
 # 사이트 비밀번호 (StatiCrypt 암호화). 미설정 시 사이트가 평문으로 빌드됨 — 주의!
 STATICRYPT_PASSWORD = os.getenv("STATICRYPT_PASSWORD", "")
 
