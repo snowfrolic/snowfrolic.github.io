@@ -29,8 +29,10 @@ from collectors.kis_api import (
 )
 from collectors.krx_flows import fetch_market_flows
 from collectors.cot_flows import fetch_cot_sp500, fetch_etf_flows
+from analyzers.portfolio_profile import compute_portfolio_profile, to_facts_dict
 from collectors.ecos import fetch_korea_macro
 from collectors.eps_revision import fetch_eps_revisions
+from collectors.undervalued import fetch_undervalued_candidates
 from collectors.market_breadth import compute_market_breadth
 from collectors.sentiment import fetch_aaii_sentiment, fetch_put_call_ratio
 from collectors.yen_carry import compute_yen_carry_risk
@@ -297,8 +299,26 @@ def run() -> int:
     # 한국 거시 (ECOS)
     korea_macro = fetch_korea_macro()
 
+    # v5: 저평가 종목 추천 후보 + 포트 성향 분석
+    log.info("저평가 후보 + 포트 성향 분석...")
+    held_set = {h["ticker"] for h in holdings_value}
+    undervalued = fetch_undervalued_candidates(
+        held_set, spy_close=sp500_close, kospi_close=kospi_close, top_n=10,
+    )
+    profile = compute_portfolio_profile(holdings_value, non_tradeable, benchmarks)
+    profile_facts = to_facts_dict(profile)
+    log.info(f"  저평가 후보 {len(undervalued)}개 · 포트 변동성 {profile.avg_volatility_pct}%, 베타 {profile.avg_beta}")
+
     log.info("뉴스 수집...")
-    news_keywords = ["코스피", "FOMC"] + [h.name for h in risk.holdings[:3]]
+    # 시장·정책 임팩트 키워드 확장 (예: 국민연금 비중조정, 지수편입, 공매도 정책 등)
+    news_keywords = (
+        ["코스피", "FOMC"]
+        + [h.name for h in risk.holdings[:3]]
+        # 정책·수급 이벤트
+        + ["국민연금 코스피", "MSCI 편입", "공매도", "한은 금통위", "Fed 금리", "BOJ 정책"]
+        # 시장 구조 이벤트
+        + ["지수 편입", "단일종목 ETF", "레버리지 ETF", "외국인 매도", "기관 매도"]
+    )
     news = fetch_news_for_keywords(news_keywords, per_kw=2)
     # 뉴스+가격 반응 결합
     holdings_chg_by_name = {h["name"]: h["daily_chg"] for h in holdings_value}
@@ -312,6 +332,9 @@ def run() -> int:
         put_call=put_call, aaii=aaii, krx_flows=krx,
         eps_revisions=eps_revisions, cot=cot, etf_flows=etf_flows,
         korea_macro=korea_macro,
+        undervalued_candidates=undervalued,
+        portfolio_profile_data=profile_facts,
+        news=news,
     )
 
     log.info("사이트 빌드...")

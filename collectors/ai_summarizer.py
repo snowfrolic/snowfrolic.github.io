@@ -119,13 +119,49 @@ class KeyIndicator:
 
 
 @dataclass
+class ImpactNews:
+    """가격 영향 큰 뉴스."""
+    title: str = ""
+    impact: str = ""        # "강한 호재" / "호재" / "중립" / "악재" / "강한 악재"
+    affects: str = ""       # 영향 자산군 (예: "KOSPI 전체", "반도체", "보유 종목 X")
+    summary: str = ""       # 한 줄 요약 + 시장 영향
+    url: str = ""
+
+
+@dataclass
+class UndervaluedPick:
+    """저평가 추천 종목."""
+    ticker: str = ""
+    name: str = ""
+    category: str = ""
+    reason: str = ""        # AI가 작성한 추천 이유 (2문장)
+    fit: str = ""           # 사용자 포트에 어떻게 부합/보완하는지 (1문장)
+
+
+@dataclass
+class PortfolioProfile:
+    """포트 성향·안정성."""
+    style: str = ""             # 공격형 / 균형형 / 방어형
+    stability: str = ""         # 매우 안정 / 안정 / 보통 / 불안정 / 매우 불안정
+    diversification: str = ""   # 0-100 점수 또는 텍스트
+    asset_allocation: str = ""  # 자산 배분 한 줄
+    region_allocation: str = "" # 지역 배분 한 줄
+    risk_concentration: str = ""# 집중 위험 한 줄 (가장 큰 비중 등)
+    overall_comment: str = ""   # 종합 평가 1-2문장
+
+
+@dataclass
 class ExecutiveDashboard:
     """통합 대시보드 — 한눈 표시용."""
-    executive_summary: str = ""    # 3-4줄 종합 (시장+포트+핵심)
+    executive_summary: str = ""
     short: DashboardTimeframe = field(default_factory=DashboardTimeframe)
     mid: DashboardTimeframe = field(default_factory=DashboardTimeframe)
     long: DashboardTimeframe = field(default_factory=DashboardTimeframe)
     key_indicators: list[KeyIndicator] = field(default_factory=list)
+    # v5 신규
+    impact_news: list[ImpactNews] = field(default_factory=list)
+    undervalued_picks: list[UndervaluedPick] = field(default_factory=list)
+    portfolio_profile: PortfolioProfile = field(default_factory=PortfolioProfile)
 
     @property
     def is_empty(self) -> bool:
@@ -194,6 +230,9 @@ def _make_facts(
     cot: Any = None,
     etf_flows: list = None,
     korea_macro: Any = None,
+    undervalued_candidates: list = None,
+    portfolio_profile_data: dict = None,
+    news_items: list = None,
 ) -> dict:
     """모델에 전달할 사실 데이터. FRED 거시지표 포함."""
     bench = {name: _series_stats(s) for name, s in benchmarks.items()}
@@ -329,6 +368,23 @@ def _make_facts(
             "cpi_yoy_pct": korea_macro.cpi_yoy_pct,
             "core_cpi_yoy_pct": korea_macro.core_cpi_yoy_pct,
         } if korea_macro and korea_macro.base_rate_pct is not None else None,
+        # v5 신규
+        "undervalued_candidates": [
+            {
+                "ticker": c.ticker, "name": c.name, "category": c.category, "region": c.region,
+                "score": c.score, "pct_52w": c.pct_52w, "vs_ma200_pct": c.vs_ma200_pct,
+                "rsi": c.rsi, "pe_forward": c.pe_forward,
+                "market_chg_20d": c.market_chg_20d, "notes": c.notes,
+            } for c in (undervalued_candidates or [])[:10]
+        ],
+        "portfolio_profile_raw": portfolio_profile_data,  # 자산/지역/섹터 배분 등
+        "news_headlines": [
+            {
+                "title": n.title, "source": n.source, "url": n.url,
+                "keyword": n.keyword, "matched_ticker": n.matched_ticker,
+                "price_reaction_pct": n.price_reaction_pct,
+            } for n in (news_items or [])
+        ],
     }
 
 
@@ -401,6 +457,33 @@ facts = {facts_json}
 
    선정 우선순위: Fed금리·한은금리·TIPS·VIX·Put/Call·외국인수급·10Y-3M·엔캐리·USD/KRW 등 시계별 결정적 지표.
 
+   {{ "impact_news" }} — facts.news_headlines에서 가격 영향 큰 뉴스 3-5개 선별 (필수).
+     선별 기준: 정책 변경(공매도·지수편입·국민연금 비중조정·금리), 대규모 수급 이벤트, 보유 종목 직접 호재/악재.
+     "삼성전자 5G 신제품" 같은 일반 뉴스 제외. "국민연금 코스피 비중 조정", "단일종목 ETF 상장" 같은 시장 구조 영향 우선.
+     각 뉴스에 대해:
+       title: 원본 헤드라인
+       impact: "강한 호재"/"호재"/"중립"/"악재"/"강한 악재"
+       affects: 영향 자산군 (예: "KOSPI 전체", "반도체 섹터", "삼성전자")
+       summary: 1문장 — 시장에 미칠 영향
+       url: 원본 링크
+
+   {{ "undervalued_picks" }} — facts.undervalued_candidates 중 사용자 포트에 적합한 3-5개 선별.
+     선별 기준: 단순 점수 순위가 아니라 "현재 시장 상황 + 사용자 포트 구성 보완" 관점.
+     예: 사용자가 한국 IT 비중 큼 → 미국 채권·금·신흥국 등 보완 가치 우선.
+     각 종목:
+       ticker, name, category
+       reason: 왜 지금 저평가인가 (2문장, facts.undervalued_candidates의 notes·메트릭 인용)
+       fit: 사용자 포트에 어떻게 보완되는가 (1문장)
+
+   {{ "portfolio_profile" }} — facts.portfolio_profile_raw + holdings 기반으로 종합 평가.
+     style: "공격형"/"균형형"/"방어형"/"매우 공격형"/"매우 방어형"
+     stability: "매우 안정"/"안정"/"보통"/"불안정"/"매우 불안정"
+     diversification: 한 줄 평가 (예: "지역·섹터 양호하나 IT 비중 과다")
+     asset_allocation: 자산 배분 한 줄 (예: "주식 60%·채권 15%·연금 25%")
+     region_allocation: 지역 배분 한 줄
+     risk_concentration: 집중 위험 한 줄 (가장 큰 비중)
+     overall_comment: 종합 1-2문장 (개선 방향 포함)
+
 ▶ risk_assessment — (기존 유지, 호환성) 포트폴리오 리스크 종합 평가
    모든 지표(매크로·기술적·수급 구조·보유 구성)를 종합 판단해서 단기/중기/장기별 리스크 의견.
 
@@ -452,9 +535,19 @@ facts = {facts_json}
     "mid":   {{"direction": "...", "market_view": "...", "portfolio_action": "...", "rationale": "..."}},
     "long":  {{"direction": "...", "market_view": "...", "portfolio_action": "...", "rationale": "..."}},
     "key_indicators": [
-      {{"category": "...", "name": "...", "value": "...", "signal": "...", "note": "..."}},
-      ...
-    ]
+      {{"category": "...", "name": "...", "value": "...", "signal": "...", "note": "..."}}
+    ],
+    "impact_news": [
+      {{"title": "...", "impact": "...", "affects": "...", "summary": "...", "url": "..."}}
+    ],
+    "undervalued_picks": [
+      {{"ticker": "...", "name": "...", "category": "...", "reason": "...", "fit": "..."}}
+    ],
+    "portfolio_profile": {{
+      "style": "...", "stability": "...", "diversification": "...",
+      "asset_allocation": "...", "region_allocation": "...",
+      "risk_concentration": "...", "overall_comment": "..."
+    }}
   }},
   "overall":    {{"observe": "...", "interpret": "...", "implication": "..."}},
   "benchmarks": {{"observe": "...", "interpret": "...", "implication": "..."}},
@@ -520,6 +613,9 @@ def generate_summaries(
     cot: Any = None,
     etf_flows: list = None,
     korea_macro: Any = None,
+    undervalued_candidates: list = None,
+    portfolio_profile_data: dict = None,
+    news: list = None,
 ) -> SectionSummaries:
     """Gemini로 4개 섹션 × 3단계 요약 + 리스크 평가 + 시장 전망 생성."""
     if not GEMINI_API_KEY:
@@ -532,6 +628,9 @@ def generate_summaries(
         put_call=put_call, aaii=aaii, krx_flows=krx_flows,
         eps_revisions=eps_revisions, cot=cot, etf_flows=etf_flows,
         korea_macro=korea_macro,
+        undervalued_candidates=undervalued_candidates,
+        portfolio_profile_data=portfolio_profile_data,
+        news_items=news,
     )
     user_prompt = PROMPT_USER_TEMPLATE.format(
         facts_json=json.dumps(facts, ensure_ascii=False, default=str),
@@ -677,6 +776,42 @@ def generate_summaries(
                     note=str(k.get("note", "")).strip(),
                 ) for k in ki_raw if isinstance(k, dict)
             ]
+        # impact_news
+        in_raw = db_raw.get("impact_news", [])
+        if isinstance(in_raw, list):
+            db.impact_news = [
+                ImpactNews(
+                    title=str(n.get("title", "")).strip(),
+                    impact=str(n.get("impact", "")).strip(),
+                    affects=str(n.get("affects", "")).strip(),
+                    summary=str(n.get("summary", "")).strip(),
+                    url=str(n.get("url", "")).strip(),
+                ) for n in in_raw if isinstance(n, dict)
+            ]
+        # undervalued_picks
+        up_raw = db_raw.get("undervalued_picks", [])
+        if isinstance(up_raw, list):
+            db.undervalued_picks = [
+                UndervaluedPick(
+                    ticker=str(u.get("ticker", "")).strip(),
+                    name=str(u.get("name", "")).strip(),
+                    category=str(u.get("category", "")).strip(),
+                    reason=str(u.get("reason", "")).strip(),
+                    fit=str(u.get("fit", "")).strip(),
+                ) for u in up_raw if isinstance(u, dict)
+            ]
+        # portfolio_profile
+        pp_raw = db_raw.get("portfolio_profile", {})
+        if isinstance(pp_raw, dict):
+            db.portfolio_profile = PortfolioProfile(
+                style=str(pp_raw.get("style", "")).strip(),
+                stability=str(pp_raw.get("stability", "")).strip(),
+                diversification=str(pp_raw.get("diversification", "")).strip(),
+                asset_allocation=str(pp_raw.get("asset_allocation", "")).strip(),
+                region_allocation=str(pp_raw.get("region_allocation", "")).strip(),
+                risk_concentration=str(pp_raw.get("risk_concentration", "")).strip(),
+                overall_comment=str(pp_raw.get("overall_comment", "")).strip(),
+            )
 
     summaries = SectionSummaries(
         overall=_extract_detail(parsed.get("overall")),

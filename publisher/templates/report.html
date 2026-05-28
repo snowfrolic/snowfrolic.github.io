@@ -265,6 +265,72 @@
     </div>
     {% endif %}
 
+    {# v5: 포트폴리오 성향·안정성 #}
+    {% if db.portfolio_profile and (db.portfolio_profile.style or db.portfolio_profile.overall_comment) %}
+    {% set pp = db.portfolio_profile %}
+    <div class="ki-card">
+      <h3>📊 포트폴리오 성향 · 안정성</h3>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+        {% if pp.style %}<span class="chip" style="background: {{ '#dc2626' if '매우 공격' in pp.style else '#ef4444' if '공격' in pp.style else '#22c55e' if '방어' in pp.style else '#f59e0b' }};">성향: {{ pp.style }}</span>{% endif %}
+        {% if pp.stability %}<span class="chip" style="background: {{ '#22c55e' if '매우 안정' in pp.stability else '#4ade80' if '안정' in pp.stability and '불안' not in pp.stability else '#f59e0b' if '보통' in pp.stability else '#ef4444' }};">안정성: {{ pp.stability }}</span>{% endif %}
+      </div>
+      <table>
+        {% if pp.asset_allocation %}<tr><td class="ki-cat">자산 배분</td><td colspan="4">{{ pp.asset_allocation }}</td></tr>{% endif %}
+        {% if pp.region_allocation %}<tr><td class="ki-cat">지역 배분</td><td colspan="4">{{ pp.region_allocation }}</td></tr>{% endif %}
+        {% if pp.diversification %}<tr><td class="ki-cat">다각화</td><td colspan="4">{{ pp.diversification }}</td></tr>{% endif %}
+        {% if pp.risk_concentration %}<tr><td class="ki-cat">집중 위험</td><td colspan="4">{{ pp.risk_concentration }}</td></tr>{% endif %}
+      </table>
+      {% if pp.overall_comment %}
+      <div style="margin-top: 10px; padding: 10px; background: var(--panel2); border-radius: 6px; font-size: 13px; line-height: 1.5; font-style: italic;">
+        💬 {{ pp.overall_comment }}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {# v5: 임팩트 뉴스 (가격 영향 큰 것만 AI 선별) #}
+    {% if db.impact_news %}
+    <div class="ki-card">
+      <h3>📰 시장 임팩트 뉴스 (AI 선별)</h3>
+      {% for n in db.impact_news %}
+      <div style="padding: 10px 0; border-bottom: 1px solid var(--panel2);">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+          <span class="chip chip-sm" style="background: {{ '#22c55e' if '강한 호재' in n.impact else '#4ade80' if '호재' in n.impact else '#dc2626' if '강한 악재' in n.impact else '#ef4444' if '악재' in n.impact else '#64748b' }};">{{ n.impact }}</span>
+          {% if n.affects %}<span class="muted">{{ n.affects }}</span>{% endif %}
+        </div>
+        <div style="font-size: 13px; line-height: 1.4;">
+          {% if n.url %}<a href="{{ n.url }}" target="_blank" rel="noopener noreferrer" style="color: var(--text); text-decoration: none;">{{ n.title }}</a>{% else %}{{ n.title }}{% endif %}
+        </div>
+        {% if n.summary %}<div style="font-size: 12px; color: var(--muted); margin-top: 3px; font-style: italic;">→ {{ n.summary }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# v5: 저평가 종목 추천 #}
+    {% if db.undervalued_picks %}
+    <div class="ki-card">
+      <h3>💎 저평가 추천 종목 (포트 미보유)</h3>
+      <div style="font-size: 11px; color: var(--muted); margin-bottom: 10px;">
+        현재 시장 상황 + 사용자 포트 구성 보완 관점에서 선별
+      </div>
+      {% for p in db.undervalued_picks %}
+      <div style="padding: 10px 0; border-bottom: 1px solid var(--panel2);">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+          <b style="font-size: 14px;">{{ p.name }}</b>
+          <span class="muted">{{ p.ticker }}</span>
+          <span class="chip chip-sm" style="background: #6366f1;">{{ p.category }}</span>
+        </div>
+        {% if p.reason %}<div style="font-size: 13px; line-height: 1.5; margin-top: 3px;">{{ p.reason }}</div>{% endif %}
+        {% if p.fit %}<div style="font-size: 12px; color: #86efac; margin-top: 3px;">→ {{ p.fit }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <div style="font-size: 11px; color: var(--muted); margin-top: 10px;">
+        ⚠ AI 분석 결과로 투자 권유가 아닙니다. 추가 분석 후 본인 판단으로 결정하세요.
+      </div>
+    </div>
+    {% endif %}
+
     {% endif %}{# end dashboard #}
 
     {% if risk.short_term_warning %}
