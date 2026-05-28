@@ -274,6 +274,13 @@
     <div class="warn critical"><b>🚨 장기 경고</b> · {{ risk.long_term_warning }}</div>
     {% endif %}
 
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <!-- 상세 영역 (펼치기) — 모든 카드를 details 안에 배치        -->
+    <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+    <details class="detail-toggle">
+      <summary>▶ 상세 인사이트 · 시장 전망 · 보유 종목 · 시장 데이터 · 뉴스</summary>
+    <div style="margin-top: 14px;">
+
     <!-- RISK ASSESSMENT (포트폴리오 리스크 종합 평가) -->
     {% if summaries and summaries.risk_assessment and not summaries.risk_assessment.is_empty %}
     <div class="card" style="border: 1px solid var(--accent); border-radius: 12px;">
@@ -314,11 +321,6 @@
     {% endif %}
 
     <!-- MARKET OUTLOOK (시장 전망 — 보유 포트 독립) -->
-    <!-- ━━━━━━━━━━ 상세 영역 (펼치기) ━━━━━━━━━━ -->
-    <details class="detail-toggle">
-      <summary>▶ 상세 인사이트 · 보유 종목 · 시장 데이터 · 뉴스</summary>
-    </details>
-
     {% if summaries and summaries.market_outlook and not summaries.market_outlook.is_empty %}
     <div class="card" style="border: 1px solid #60a5fa; border-radius: 12px;">
       <h2 style="border-left-color: #3b82f6;">🌐 시장 전망 (Market Outlook)</h2>
@@ -583,6 +585,9 @@
       {% endfor %}
     </div>
     {% endif %}
+
+    </div>{# end of detail wrapper #}
+    </details>{# end of detail-toggle #}
 
     <div class="footer">
       Generated at {{ generated_at }} · 본 리포트는 정보 제공용이며 투자 권유가 아닙니다.<br>
