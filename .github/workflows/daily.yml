@@ -108,6 +108,7 @@ jobs:
           KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
           KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
           KIS_ACCOUNT_NO: ${{ secrets.KIS_ACCOUNT_NO }}
+          ECOS_API_KEY: ${{ secrets.ECOS_API_KEY }}
         run: python main.py
 
       - name: Copy dist to root
