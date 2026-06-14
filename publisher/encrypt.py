@@ -51,7 +51,9 @@ def decrypt_json_bytes(blob: bytes, password: str) -> object:
     plain = AESGCM(key).decrypt(iv, ct, None).decode("utf-8")
     return json.loads(plain)
 
-LOCK_HTML_TEMPLATE = """<!DOCTYPE html>
+LOCK_SENTINEL = "<!-- staticrypt-locked -->"
+
+LOCK_HTML_TEMPLATE = """<!DOCTYPE html><!-- staticrypt-locked -->
 <html lang="ko"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -221,15 +223,22 @@ def encrypt_file(in_path: Path, out_path: Path, password: str) -> None:
 
 
 def encrypt_dist(dist_dir: Path, password: str) -> int:
-    """dist/ 안의 모든 *.html을 in-place로 암호화. history.json은 그대로 둠."""
+    """dist/ 안의 모든 *.html을 in-place로 암호화. 이미 lock 페이지면 skip.
+
+    중복 암호화 방지: 템플릿 상단의 LOCK_SENTINEL 주석으로 1차 감지하고,
+    sentinel 도입 이전 빌드와의 호환을 위해 앞 5KB 안에서
+    'id="lock"' + 'const ENC' 패턴도 함께 본다.
+    """
     count = 0
     for html_path in dist_dir.rglob("*.html"):
-        # 이미 lock 페이지인지 헤더로 감지
         try:
-            head = html_path.read_text(encoding="utf-8")[:200]
+            with open(html_path, encoding="utf-8") as f:
+                head = f.read(5000)
         except Exception:
             continue
-        if "id=\"lock\"" in head and "ENC =" in html_path.read_text(encoding="utf-8")[:2000]:
+        if LOCK_SENTINEL in head[:200]:
+            continue
+        if 'id="lock"' in head and "const ENC" in head:
             continue
         encrypt_file(html_path, html_path, password)
         count += 1
