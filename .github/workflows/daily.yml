@@ -5,11 +5,6 @@ on:
     - cron: '30 22 * * *'
   workflow_dispatch:  # 수동 실행 가능
 
-env:
-  # Force Node.js 24 runtime for JS-based actions.
-  # Removes the Node 20 deprecation warning (effective 2026-06).
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-
 permissions:
   contents: write
 
@@ -19,10 +14,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -132,5 +127,7 @@ jobs:
             echo "no changes - skip commit"
           else
             git commit -m "Daily build $(date -u +%Y-%m-%d_%H:%M)Z"
+            # Concurrent-push safety: rebase atop the remote tip before pushing
+            git pull --rebase origin main || true
             git push
           fi
